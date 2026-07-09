@@ -25,6 +25,8 @@ The app must boot as a complete empty shell:
 - web and CLI local state lives in ignored data files unless an explicit test path is provided
 - updates add features and migrations without overwriting user state
 
+Privacy is the first release gate. A feature is not ready if it works but brings along real user data, real company research, private prompts, local paths, screenshots, logs, generated application material, credentials, or old private Git history.
+
 Run this before every commit:
 
 ```bash
@@ -48,6 +50,8 @@ Use synthetic fixtures for tests. Synthetic fixtures must use clearly fake names
 
 This clean repository owns the public history. The local private working app is not the public history.
 
+The public `main` branch must only receive reviewed, sanitized commits from this clean repository. Do not push directly from a private working checkout, do not wire a private checkout to this GitHub repository, and do not treat GitHub as a backup for local user state.
+
 Before a commit:
 
 1. Inspect `git status --short --ignored`.
@@ -55,6 +59,14 @@ Before a commit:
 3. Run `npm run clean:check`.
 4. Run the relevant test/build commands.
 5. Commit only after the tree is clean and verified.
+
+Before opening or updating a pull request:
+
+1. Start from this clean repository, not a private working checkout.
+2. Keep the PR limited to product code, tests, docs, fixtures, or migrations that are safe to publish.
+3. Run `npm run clean:check` and the relevant validation commands locally.
+4. Review the full diff for user data, company scans, local paths, credentials, generated output, and old private history.
+5. State in the PR description that the clean-repo gate passed and that no private data is included.
 
 Before updating GitHub `main`:
 

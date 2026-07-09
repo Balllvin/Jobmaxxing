@@ -15,6 +15,22 @@ It gives humans and coding agents one place to:
 - plan browser work with consent gates
 - expose the same job-search workflows to Codex-compatible clients, Cursor, OpenCode, and Hermes through MCP or CLI
 
+## Public Repository Contract
+
+This repository is the clean public source for the app. It should contain product code, tests, docs, synthetic fixtures, and setup instructions only.
+
+Do not commit user data, company scans, project notes, resumes, cover letters, screenshots of private state, generated application packs, credentials, local logs, dependency folders, build products, absolute local paths, or Git history copied from a private working checkout.
+
+Before every commit or pull request:
+
+```bash
+npm run clean:check
+```
+
+Then inspect the full diff. Pull requests must be made from a clean checkout or branch and must state that the clean-repo check passed. Privacy takes priority over convenience: if a change cannot be separated from user data, clean it before opening the PR.
+
+The app stores user state outside the repository at runtime. Feature updates should add or migrate behavior without overwriting existing user data.
+
 ## Native macOS App
 
 Bootstrap a fresh clone:
