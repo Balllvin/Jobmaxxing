@@ -1,0 +1,4 @@
+interface:
+  display_name: "Orchestrate Subagents"
+  short_description: "Use sub-agents across repo work"
+  default_prompt: "Use $orchestrate-subagents to split this repo task across exploration, implementation, review, repair, and verification agents while keeping one parent agent responsible for integration."

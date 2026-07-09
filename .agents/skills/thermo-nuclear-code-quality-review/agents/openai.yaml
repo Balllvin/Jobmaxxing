@@ -1,0 +1,4 @@
+interface:
+  display_name: "Thermo-Nuclear Code Quality Review"
+  short_description: "Run strict code quality reviews"
+  default_prompt: "Use $thermo-nuclear-code-quality-review to run a strict maintainability review of this branch."

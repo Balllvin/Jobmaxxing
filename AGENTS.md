@@ -107,6 +107,18 @@ Before updating GitHub `main`:
 - Keep Hermes tool loading selective: status/style/command always available, workflow tools only when needed.
 - Use `jobmaxxing_hermes_status` before changing Hermes tools, connectors, model routes, or slash update behavior.
 
+## Repo-Local Skills
+
+Repo-local skills live under `.agents/skills/`. Use them when their trigger matches, but keep the clean-repo contract first: no private state, local paths, credentials, generated output, or real job-search data in commits.
+
+- `ponytail`: Use on coding, refactoring, fixing, code-design, dependency-choice, and simplification work.
+- `ponytail-review`: Use when reviewing for over-engineering, deletion opportunities, speculative abstractions, or unnecessary dependencies.
+- `thermo-nuclear-code-quality-review`: Use for strict maintainability audits, large diffs, risky refactors, giant files, tangled conditionals, or changes that may make Jobmaxxing harder to reason about.
+- `minimalist-ui`: Use for restrained product UI work where the goal is fewer layers, fewer cards, quiet surfaces, and useful hiring workflows.
+- `design-taste-frontend`: Use for product-grade frontend polish, UI architecture, interaction states, responsive behavior, dependency checks, and visual quality passes.
+- `agent-prompt-engineering`: Use when writing or revising prompts, `SKILL.md` files, agent rules, Hermes prompts, MCP/tool instructions, orchestration prompts, or communication-drafting agents.
+- `orchestrate-subagents`: Use for meaningful multi-surface repo work where parallel exploration, implementation, review, repair, validation, or documentation improves completeness.
+
 ## Safety
 
 - Never submit job applications automatically.
