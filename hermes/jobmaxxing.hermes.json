@@ -1,0 +1,113 @@
+{
+  "schema": "jobmaxxing-hermes-layer",
+  "name": "Jobmaxxing Hermes Layer",
+  "description": "A focused Hermes overlay for job-search orchestration, document-grounded writing, safe browser planning, and hiring-process workflows.",
+  "defaultModelRouteId": "final-review",
+  "mcpServers": [
+    {
+      "id": "jobmaxxing",
+      "command": "npm",
+      "args": ["run", "mcp"],
+      "purpose": "Local Jobmaxxing jobs, documents, writing, interview, browser, and activity tools."
+    }
+  ],
+  "requiredJobmaxxingTools": [
+    "jobmaxxing_status",
+    "jobmaxxing_hermes_status",
+    "jobmaxxing_add_job",
+    "jobmaxxing_draft_application",
+    "jobmaxxing_interview_pack",
+    "jobmaxxing_market_research",
+    "jobmaxxing_automation_plan",
+    "jobmaxxing_company_profiles",
+    "jobmaxxing_company_research_packet",
+    "jobmaxxing_browser_plan",
+    "jobmaxxing_log_activity",
+    "jobmaxxing_audit_text",
+    "jobmaxxing_style_prompt",
+    "jobmaxxing_company_research_prompt",
+    "jobmaxxing_command"
+  ],
+  "recommendedHermesToolsets": [
+    {
+      "id": "subagents",
+      "purpose": "Spawn and coordinate specialized job-search workers."
+    },
+    {
+      "id": "browser",
+      "purpose": "Research and prepare application fields with human approval gates."
+    },
+    {
+      "id": "filesystem",
+      "purpose": "Read local documents explicitly selected by the user."
+    },
+    {
+      "id": "github",
+      "purpose": "Inspect proof repositories and keep Jobmaxxing/Hermes sources current."
+    },
+    {
+      "id": "google-drive",
+      "purpose": "Import resumes, work samples, offer docs, and interview prep docs when authorized."
+    },
+    {
+      "id": "google-docs",
+      "purpose": "Edit CVs, letters, and notes when authorized."
+    },
+    {
+      "id": "gmail",
+      "purpose": "Read and draft recruiting email workflows when authorized."
+    },
+    {
+      "id": "google-calendar",
+      "purpose": "Schedule interviews and follow-ups when authorized."
+    },
+    {
+      "id": "google-sheets",
+      "purpose": "Read or update application trackers when authorized."
+    },
+    {
+      "id": "google-slides",
+      "purpose": "Prepare portfolio or interview decks when authorized."
+    },
+    {
+      "id": "telegram",
+      "purpose": "Deliver Hermes chat updates and alert workflows when configured."
+    },
+    {
+      "id": "microsoft-365",
+      "purpose": "Use Office, Outlook, Word, or OneDrive workflows when authorized."
+    },
+    {
+      "id": "figma",
+      "purpose": "Inspect design proof and portfolio assets when authorized."
+    },
+    {
+      "id": "railway",
+      "purpose": "Inspect deployment proof, service URLs, and app status when authorized."
+    },
+    {
+      "id": "hugging-face",
+      "purpose": "Inspect model, dataset, Space, and paper proof when authorized."
+    },
+    {
+      "id": "notion",
+      "purpose": "Read or write job-search notes and CRM records when authorized."
+    },
+    {
+      "id": "linear",
+      "purpose": "Track job-search work as product-style tasks when authorized."
+    }
+  ],
+  "skills": [
+    {
+      "id": "jobmaxxing-orchestrator",
+      "path": "hermes/skills/jobmaxxing-orchestrator/SKILL.md",
+      "purpose": "Top-level Hermes operating policy for Jobmaxxing."
+    }
+  ],
+  "documents": {
+    "database": "Application Support/Jobmaxxing/documents.sqlite",
+    "files": "Application Support/Jobmaxxing/Documents",
+    "policy": "Documents are indexed locally and linked into prompts by explicit reference. Do not paste entire documents into context unless the task needs it."
+  }
+}

@@ -1,0 +1,12 @@
+node_modules/
+dist/
+macos/.build/
+macos/dist/
+.env
+.env.*
+data/*.local.json
+data/jobmaxxing.json
+coverage/
+output/
+.DS_Store
+*.log

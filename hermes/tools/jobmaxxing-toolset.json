@@ -1,0 +1,82 @@
+{
+  "schema": "jobmaxxing-toolset",
+  "toolBudget": "focused",
+  "alwaysAvailable": [
+    "jobmaxxing_status",
+    "jobmaxxing_hermes_status",
+    "jobmaxxing_command",
+    "jobmaxxing_style_prompt"
+  ],
+  "loadWhenNeeded": {
+    "applications": [
+      "jobmaxxing_add_job",
+      "jobmaxxing_draft_application",
+      "jobmaxxing_audit_text",
+      "jobmaxxing_log_activity"
+    ],
+    "companies": [
+      "jobmaxxing_company_profiles",
+      "jobmaxxing_company_research_packet",
+      "jobmaxxing_company_research_prompt",
+      "jobmaxxing_log_activity"
+    ],
+    "interviews": [
+      "jobmaxxing_interview_pack",
+      "jobmaxxing_company_research_prompt"
+    ],
+    "intelligence": [
+      "jobmaxxing_market_research",
+      "jobmaxxing_automation_plan"
+    ],
+    "browser": [
+      "jobmaxxing_browser_plan",
+      "jobmaxxing_log_activity"
+    ],
+    "documents": [
+      "document_import",
+      "evidence_promote",
+      "google-drive",
+      "google-docs",
+      "google-sheets",
+      "google-slides",
+      "gmail",
+      "microsoft-365",
+      "onedrive",
+      "word"
+    ],
+    "calendar": [
+      "google-calendar",
+      "outlook"
+    ],
+    "telegram": [
+      "telegram",
+      "jobmaxxing_hermes_status"
+    ],
+    "directMessages": [
+      "whatsapp",
+      "telegram",
+      "jobmaxxing_hermes_status"
+    ],
+    "repoProof": [
+      "github",
+      "filesystem",
+      "figma",
+      "railway",
+      "hugging-face"
+    ],
+    "workTracking": [
+      "linear",
+      "notion",
+      "jobmaxxing_log_activity"
+    ],
+    "orchestration": [
+      "subagents"
+    ]
+  },
+  "blockedByDefault": [
+    "external_submit",
+    "linkedin_message_send",
+    "profile_edit",
+    "captcha_bypass"
+  ]
+}
