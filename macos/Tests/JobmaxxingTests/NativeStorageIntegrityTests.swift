@@ -80,29 +80,29 @@ final class NativeStorageIntegrityTests: XCTestCase {
     state.profile.evidence = [
       EvidenceItem(
         id: "fact-contract",
-        title: "Example Analytics data tooling contract",
-        proof: "Contracted as Working Student at Example Analytics Ltd to support reporting.",
-        sourceURL: "Apple Mail contract evidence: Sample Candidate Vertrag.pdf",
-        tags: ["Working Student"],
+        title: "ExampleOps / ExampleData data tooling contract",
+        proof: "Contracted as working student at ExampleData AG / ExampleOps AG to support reporting.",
+        sourceURL: "Apple Mail contract evidence: Local Candidate Vertrag.pdf",
+        tags: ["working student"],
         strength: 5
       )
     ]
     state.profile.experience = [
       ProfileExperience(
         id: "exp-contract",
-        title: "Working Student",
-        organization: "Example Analytics Ltd",
+        title: "working student",
+        organization: "ExampleData AG / ExampleOps AG",
         location: "Zurich",
         period: "Contract",
-        summary: "Contracted as Working Student at Example Analytics Ltd.",
+        summary: "Contracted as working student at ExampleData AG / ExampleOps AG.",
         bullets: ["Supported reporting."],
-        sourceURL: "Apple Mail contract evidence: Sample Candidate Vertrag.pdf"
+        sourceURL: "Apple Mail contract evidence: Local Candidate Vertrag.pdf"
       )
     ]
     state.jobs = [
       JobRecord(
         id: "job-drift",
-        company: "Example Robotics",
+        company: "Example Manufacturing",
         role: "Intern Applied AI &amp; AI-Platform",
         sourceURL: "https://example.com",
         description: "Work on AIML and RAG.",
@@ -110,15 +110,15 @@ final class NativeStorageIntegrityTests: XCTestCase {
         score: 91,
         keywords: ["AIML", "Data / ML / AI Intern"],
         risks: [],
-        nextActions: ["Review Finance trifft auf Engineering: Trainee-Programm beim VZ, 80-100%"],
-        notes: "Source title: Finance trifft auf Engineering: Trainee-Programm beim VZ, 80-100%",
+        nextActions: ["Review Daten trifft auf Systeme: Trainee-Programm, 80-100%"],
+        notes: "Source title: Daten trifft auf Systeme: Trainee-Programm, 80-100%",
         draft: ApplicationDraft(
           headline: "Intern Applied AI &amp; AI-Platform candidate",
           resumeBullets: ["Evidence for Data / ML / AI Intern."],
-          coverLetter: "Sehr geehrte Frau Malcolm,\n\nIch bewerbe mich für das Trainee-Programm Finance trifft auf Engineering.",
+          coverLetter: "Sehr geehrte Frau Beispiel,\n\nIch bewerbe mich für das Trainee-Programm Daten trifft auf Systeme.",
           recruiterMessage: "Hi, I found the Data / ML / AI Intern role.",
-          screeningAnswers: ["Warum VZ?: Finance trifft auf Engineering."],
-          evidenceLinks: ["Apple Mail contract evidence: Sample Candidate Vertrag.pdf"],
+          screeningAnswers: ["Warum Example?: Daten trifft auf Systeme."],
+          evidenceLinks: ["Apple Mail contract evidence: Local Candidate Vertrag.pdf"],
           claimTrace: nil,
           assumptions: ["Role priorities include AIML."],
           missingEvidence: nil
@@ -127,8 +127,8 @@ final class NativeStorageIntegrityTests: XCTestCase {
     ]
     state.companyProfiles = [
       CompanyProfile(
-        id: "v-zug",
-        name: "Example Robotics",
+        id: "example-manufacturing",
+        name: "Example Manufacturing",
         website: "https://example.com",
         linkedInURL: "",
         category: "Applied AI",
@@ -144,7 +144,7 @@ final class NativeStorageIntegrityTests: XCTestCase {
             id: "submission-drift",
             jobID: "job-drift",
             materialType: "Application draft",
-            title: "Finance trifft auf Engineering: Trainee-Programm beim VZ, 80-100% application pack",
+            title: "Daten trifft auf Systeme: Trainee-Programm, 80-100% application pack",
             summary: "Drafted for Intern Applied AI &amp; AI-Platform.",
             sourceURL: "https://example.com",
             status: "Proposed"
@@ -157,9 +157,9 @@ final class NativeStorageIntegrityTests: XCTestCase {
           websitePages: [
             CompanyResearchPage(
               id: "page-drift",
-              title: "Example Robotics Intern Applied AI &amp; AI-Platform",
+              title: "Example Manufacturing Intern Applied AI &amp; AI-Platform",
               url: "https://example.com",
-              summary: "Source page for Finance trifft auf Engineering: Trainee-Programm beim VZ, 80-100%."
+              summary: "Source page for Daten trifft auf Systeme: Trainee-Programm, 80-100%."
             )
           ],
           products: [],
@@ -177,11 +177,11 @@ final class NativeStorageIntegrityTests: XCTestCase {
     ]
     state.contacts = [
       ContactRecord(
-        id: "rodolphe-live",
-        name: "Jordan",
+        id: "riley-live",
+        name: "Riley",
         role: "Supply Chain internship contact",
         jobDescription: "",
-        linkedInURL: "https://ch.linkedin.com/in/rodolphe-dehin-60b513129",
+        linkedInURL: "https://www.linkedin.com/in/riley-rivera-example",
         phone: "",
         email: "",
         location: "",
@@ -193,9 +193,9 @@ final class NativeStorageIntegrityTests: XCTestCase {
         projectNotes: "",
         companyLinks: [
           ContactCompanyLink(
-            id: "rodolphe-medela",
-            companyID: "medela",
-            companyName: "Example Robotics",
+            id: "riley-example-devices",
+            companyID: "example-devices",
+            companyName: "Example Devices",
             role: "Supply Chain internship contact",
             relationship: "Hiring contact",
             notes: "",
@@ -204,8 +204,8 @@ final class NativeStorageIntegrityTests: XCTestCase {
         ],
         research: ContactResearchProfile(
           status: "Enhanced",
-          summary: "LinkedIn public search identifies him as Jordan Rivera.",
-          publicFacts: ["LinkedIn public search identifies him as Jordan Rivera."],
+          summary: "LinkedIn public search identifies him as Riley Rivera.",
+          publicFacts: ["LinkedIn public search identifies him as Riley Rivera."],
           sourceURLs: [],
           openQuestions: [],
           proposedAdditions: []
@@ -222,12 +222,12 @@ final class NativeStorageIntegrityTests: XCTestCase {
     XCTAssertEqual(store.state.jobs[0].role, "Applied AI and AI Platform Intern")
     XCTAssertEqual(store.state.jobs[0].keywords, ["AI and ML", "Data, ML, and AI Intern"])
     XCTAssertEqual(store.state.jobs[0].draft?.headline, "Applied AI and AI Platform Intern candidate")
-    XCTAssertTrue(store.state.jobs[0].draft?.coverLetter.contains("Sehr geehrte Frau Malcolm") == true)
-    XCTAssertEqual(store.state.contacts?.first?.name, "Jordan Rivera")
+    XCTAssertTrue(store.state.jobs[0].draft?.coverLetter.contains("Sehr geehrte Frau Beispiel") == true)
+    XCTAssertEqual(store.state.contacts?.first?.name, "Riley Rivera")
     XCTAssertEqual(store.state.profile.experience?.first?.title, "Working Student")
-    XCTAssertTrue(store.state.profile.evidence[0].proof.contains("source role title: Working Student"))
-    XCTAssertTrue(store.state.profile.evidence[0].sourceURL.contains("original German filename: Sample Candidate Vertrag.pdf"))
-    XCTAssertTrue(store.state.companyProfiles?.first?.submittedMaterials.first?.title.contains("Finance and Engineering Trainee Program at VZ, 80-100%") == true)
+    XCTAssertTrue(store.state.profile.evidence[0].proof.contains("source role title: working student"))
+    XCTAssertTrue(store.state.profile.evidence[0].sourceURL.contains("original German filename: Local Candidate Vertrag.pdf"))
+    XCTAssertTrue(store.state.companyProfiles?.first?.submittedMaterials.first?.title.contains("Data and Systems Trainee Program, 80-100%") == true)
     XCTAssertEqual(afterSecondLoad, afterFirstLoad)
   }
 

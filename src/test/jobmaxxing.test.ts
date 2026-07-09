@@ -119,23 +119,23 @@ describe("jobmaxxing core", () => {
     const driftedJob = {
       ...savedJob,
       id: "job-language-drift",
-      company: "Example Robotics",
-      role: "AI/ML Platform Engineer",
+      company: "Example Manufacturing",
+      role: "Intern Applied AI &amp; AI-Platform",
       keywords: ["AIML", "agent-based workflows"],
       documents: {
         ...rawPack,
-        resumeHeadline: "AI/ML Platform Engineer candidate",
-        recruiterMessage: "Hi, I found the Data / ML / AI role.",
-        followUpMessage: "Following up on the AI/ML Platform Engineer role.",
-        coverLetter: "Sehr geehrte Damen und Herren,\n\nIch bewerbe mich für die Platform Engineer Rolle."
+        resumeHeadline: "Intern Applied AI &amp; AI-Platform candidate",
+        recruiterMessage: "Hi, I found the Data / ML / AI Intern role.",
+        followUpMessage: "Following up on Daten trifft auf Systeme: Trainee-Programm, 80-100%.",
+        coverLetter: "Sehr geehrte Frau Beispiel,\n\nIch bewerbe mich für das Trainee-Programm Daten trifft auf Systeme."
       }
     };
     const driftedContact = {
-      id: "jordan-live",
-      name: "Jordan",
+      id: "riley-live",
+      name: "Riley",
       role: "Supply Chain internship contact",
       jobDescription: "",
-      linkedInUrl: "https://www.linkedin.com/in/jordan-rivera-example",
+      linkedInUrl: "https://www.linkedin.com/in/riley-rivera-example",
       phone: "",
       email: "",
       location: "",
@@ -147,9 +147,9 @@ describe("jobmaxxing core", () => {
       projectNotes: "",
       companyLinks: [
         {
-          id: "jordan-example-robotics",
-          companyId: "example-robotics",
-          companyName: "Example Robotics",
+          id: "riley-example-devices",
+          companyId: "example-devices",
+          companyName: "Example Devices",
           role: "Supply Chain internship contact",
           relationship: "Hiring contact",
           notes: "",
@@ -158,8 +158,8 @@ describe("jobmaxxing core", () => {
       ],
       research: {
         status: "Enhanced",
-        summary: "LinkedIn public search identifies him as Jordan Rivera.",
-        publicFacts: ["LinkedIn public search identifies him as Jordan Rivera."],
+        summary: "LinkedIn public search identifies him as Riley Rivera.",
+        publicFacts: ["LinkedIn public search identifies him as Riley Rivera."],
         sourceUrls: [],
         openQuestions: [],
         proposedAdditions: []
@@ -175,14 +175,14 @@ describe("jobmaxxing core", () => {
             strengths: [
               {
                 id: "fact-contract",
-                label: "Example Analytics data tooling contract",
-                proof: "Contracted as Working Student at Example Analytics Ltd to support reporting.",
-                tags: ["Working Student"]
+                label: "ExampleOps / ExampleData data tooling contract",
+                proof: "Contracted as working student at ExampleData AG / ExampleOps AG to support reporting.",
+                tags: ["working student"]
               }
             ],
             promptMemory: [
-              "Example Analytics can be claimed as contracted Working Student work.",
-              "Apple Mail contract evidence: Sample Candidate Vertrag.pdf"
+              "ExampleOps / ExampleData can be claimed as contracted working student work.",
+              "Apple Mail contract evidence: Local Candidate Vertrag.pdf"
             ]
           },
           contacts: [driftedContact]
@@ -194,16 +194,16 @@ describe("jobmaxxing core", () => {
       const job = normalized.jobs[0];
 
       expect(normalizeUserFacingText("AIML - Machine Learning Research Engineer")).toBe("Machine Learning Research Engineer");
-      expect(job.role).toBe("AI and ML Platform Engineer");
+      expect(job.role).toBe("Applied AI and AI Platform Intern");
       expect(job.keywords).toContain("AI and ML");
-      expect(job.documents?.resumeHeadline).toBe("AI and ML Platform Engineer candidate");
-      expect(job.documents?.recruiterMessage).toContain("Data, ML, and AI role");
-      expect(job.documents?.followUpMessage).toContain("AI and ML Platform Engineer role");
-      expect(job.documents?.coverLetter).toContain("Sehr geehrte Damen und Herren");
-      expect(normalized.contacts?.[0].name).toBe("Jordan");
-      expect(normalized.profile.strengths[0].proof).toContain("Working Student");
-      expect(normalized.profile.strengths[0].tags).toContain("Working Student");
-      expect(normalized.profile.promptMemory.join(" ")).toContain("Sample Candidate Vertrag.pdf");
+      expect(job.documents?.resumeHeadline).toBe("Applied AI and AI Platform Intern candidate");
+      expect(job.documents?.recruiterMessage).toContain("Data, ML, and AI Intern");
+      expect(job.documents?.followUpMessage).toContain("Data and Systems Trainee Program, 80-100%");
+      expect(job.documents?.coverLetter).toContain("Sehr geehrte Frau Beispiel");
+      expect(normalized.contacts?.[0].name).toBe("Riley");
+      expect(normalized.profile.strengths[0].proof).toContain("source role title: working student");
+      expect(normalized.profile.strengths[0].tags).toContain("working student");
+      expect(normalized.profile.promptMemory.join(" ")).toContain("original German filename: Local Candidate Vertrag.pdf");
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
@@ -930,13 +930,13 @@ describe("jobmaxxing core", () => {
     const companies = Array.from({ length: 160 }, (_, index) => ({
       id: `large-company-${index}`,
       name: `Large Company ${index}`,
-      website: "https://example.com",
+      website: `https://large-${index}.example.com`,
       linkedInUrl: "",
       category: "Target company",
       size: "Unknown",
       headquarters: "Unknown",
       publicStatus: "Unknown",
-      summary: "Synthetic scale fixture.",
+      summary: `Large company ${index} summary.`,
       relationship: "Application target",
       applicationIds: [],
       submittedMaterials: [],

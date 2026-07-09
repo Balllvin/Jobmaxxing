@@ -197,7 +197,7 @@ struct ContactsView: View {
       selectedCompanyID = initialCompanyID
       selectedCompanyFilter = initialCompanyID
     } else if selectedCompanyID.isEmpty {
-      selectedCompanyID = store.companyProfiles.first(where: { $0.id == "medela" })?.id ?? store.companyProfiles.first?.id ?? ""
+      selectedCompanyID = store.companyProfiles.first?.id ?? ""
     }
     selectedContactID = ""
   }
@@ -360,12 +360,12 @@ private struct ContactList: View {
     } else {
       VStack(spacing: 0) {
         ForEach(contacts) { contact in
-          Button {
-            selectedContactID = contact.id
-          } label: {
-            ContactRow(contact: contact, isSelected: selectedContactID == contact.id)
-          }
-          .buttonStyle(.plain)
+          ContactRow(contact: contact, isSelected: selectedContactID == contact.id)
+            .onTapGesture {
+              selectedContactID = contact.id
+            }
+            .accessibilityAddTraits(.isButton)
+            .accessibilityLabel(contact.name)
           if contact.id != contacts.last?.id {
             Divider()
           }
@@ -985,29 +985,26 @@ struct ContactSourceLabel: Hashable {
     if host.contains("workdayjobs.com") {
       return "Workday careers"
     }
-    if host.contains("medela.com") {
-      if path.hasSuffix(".pdf") {
-        return "Company PDF"
-      }
-      if path.contains("working-at-medela") {
-        return "Company careers"
-      }
-      if path.contains("medela-news") {
-        return "Company news"
-      }
-      if path.contains("leadership") {
-        return "Company leadership"
-      }
-      if path.contains("history") {
-        return "Company history"
-      }
-      if path.contains("corporate-social") || path.contains("responsibilities") {
-        return "Company CSR"
-      }
-      if path.contains("products") || path.contains("solutions") {
-        return "Company products"
-      }
-      return "Company"
+    if path.hasSuffix(".pdf") {
+      return "Company PDF"
+    }
+    if path.contains("careers") || path.contains("working-at") || path.contains("jobs") {
+      return "Company careers"
+    }
+    if path.contains("news") {
+      return "Company news"
+    }
+    if path.contains("leadership") {
+      return "Company leadership"
+    }
+    if path.contains("history") {
+      return "Company history"
+    }
+    if path.contains("corporate-social") || path.contains("responsibilities") {
+      return "Company CSR"
+    }
+    if path.contains("products") || path.contains("solutions") {
+      return "Company products"
     }
     return host
   }
@@ -1211,7 +1208,7 @@ private struct ContactCompanyPicker: View {
     }
     .onAppear {
       if selectedCompanyID.isEmpty {
-        selectedCompanyID = store.companyProfiles.first(where: { $0.id == "medela" })?.id ?? store.companyProfiles.first?.id ?? ""
+        selectedCompanyID = store.companyProfiles.first?.id ?? ""
       }
     }
   }

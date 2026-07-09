@@ -527,7 +527,7 @@ function normalizeDraftBodyText(value: string): string {
 }
 
 function isSourceLanguageArtifact(value: string): boolean {
-  return /\b(Sehr geehrte|Ich bewerbe mich|Finanzthemen|Schweizerdeutsch|Warum VZ)\b/i.test(value);
+  return /\b(Sehr geehrte|Ich bewerbe mich|Finanzthemen|Schweizerdeutsch|Warum Example)\b/i.test(value);
 }
 
 function normalizeProfileForDisplay(profile: UserProfile): UserProfile {

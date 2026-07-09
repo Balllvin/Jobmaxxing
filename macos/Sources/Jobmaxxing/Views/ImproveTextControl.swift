@@ -18,17 +18,16 @@ struct ImproveTextControl: View {
   @State private var editorHeight: CGFloat = 72
 
   var body: some View {
-    Button {
-      isOpen.toggle()
-    } label: {
-      Image(systemName: "bubble.left.and.bubble.right")
-        .font(.system(size: 11, weight: .semibold))
-        .foregroundStyle(.secondary)
-        .frame(width: 22, height: 22)
-        .contentShape(Rectangle())
-    }
-    .buttonStyle(.plain)
+    Image(systemName: "bubble.left.and.bubble.right")
+      .font(.system(size: 11, weight: .semibold))
+      .foregroundStyle(.secondary)
+      .frame(width: 22, height: 22)
+      .contentShape(Rectangle())
+      .onTapGesture {
+        isOpen.toggle()
+      }
     .help("Improve with feedback")
+    .accessibilityAddTraits(.isButton)
     .accessibilityLabel("Improve with feedback")
     .popover(isPresented: $isOpen, arrowEdge: .bottom) {
       popoverBody
@@ -67,6 +66,7 @@ struct ImproveTextControl: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .focusable(false)
         .disabled(dictation.isTranscribing || isRewriting)
         .help(dictation.isRecording ? "Stop and transcribe" : "Dictate feedback")
         .accessibilityLabel(dictation.isRecording ? "Stop recording" : "Record feedback")
@@ -81,6 +81,7 @@ struct ImproveTextControl: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .focusable(false)
         .disabled(!canSend)
         .help("Rewrite (⌘⏎)")
         .accessibilityLabel("Rewrite with feedback")

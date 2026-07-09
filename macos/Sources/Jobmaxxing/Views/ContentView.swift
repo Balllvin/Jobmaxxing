@@ -31,6 +31,8 @@ struct ContentView: View {
       }
     }
     .background(AppTheme.canvas)
+    .background(FocusRingSuppressor().allowsHitTesting(false))
+    .tint(Color.secondary)
     .onAppear {
       restoreSavedSelection()
     }

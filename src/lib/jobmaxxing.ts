@@ -433,12 +433,24 @@ export function formatExperienceForPrompt(profile: UserProfile): string {
 }
 
 export function normalizeUserFacingText(value: string): string {
-  return value
+  const protectedSourceRole = "__SOURCE_WORKING_STUDENT__";
+  return (value ?? "")
     .replaceAll("&amp;", "&")
     .replace(/\bAIML\s*-\s*/g, "")
     .replace(/\bAIML\b/g, "AI and ML")
     .replace(/\bAI\/ML\b/g, "AI and ML")
+    .replace(/\bData\s*\/\s*ML\s*\/\s*AI Intern\b/g, "Data, ML, and AI Intern")
     .replace(/\bData\s*\/\s*ML\s*\/\s*AI\b/g, "Data, ML, and AI")
+    .replace(/\bIntern Applied AI\s*&\s*AI-Platform\b/g, "Applied AI and AI Platform Intern")
+    .replace(/\bApplied AI\s*&\s*AI-Platform Intern\b/g, "Applied AI and AI Platform Intern")
+    .replace(/Daten trifft auf Systeme: Trainee-Programm, 80-100%/g, "Data and Systems Trainee Program, 80-100%")
+    .replace(/\bContracted as working student\b/g, `Contracted as a working student (source role title: ${protectedSourceRole})`)
+    .replace(/\bsource role title: Working Student\b/g, `source role title: ${protectedSourceRole}`)
+    .replaceAll(protectedSourceRole, "working student")
+    .replace(
+      /\bApple Mail contract evidence: Local Candidate Vertrag\.pdf\b/g,
+      "Apple Mail contract evidence: Local Candidate contract.pdf (original German filename: Local Candidate Vertrag.pdf)"
+    )
     .replace(/\s+/g, " ")
     .trim();
 }

@@ -25,6 +25,41 @@ struct SelectedRowSurface: ViewModifier {
   }
 }
 
+struct FocusRingSuppressor: NSViewRepresentable {
+  func makeNSView(context: Context) -> NSView {
+    FocusRingSuppressingView()
+  }
+
+  func updateNSView(_ nsView: NSView, context: Context) {
+    (nsView as? FocusRingSuppressingView)?.suppressSoon()
+  }
+}
+
+private final class FocusRingSuppressingView: NSView {
+  override func viewDidMoveToWindow() {
+    super.viewDidMoveToWindow()
+    suppressSoon()
+  }
+
+  override func layout() {
+    super.layout()
+    suppressSoon()
+  }
+
+  func suppressSoon() {
+    DispatchQueue.main.async { [weak self] in
+      self?.window?.contentView?.suppressFocusRingsRecursively()
+    }
+  }
+}
+
+private extension NSView {
+  func suppressFocusRingsRecursively() {
+    focusRingType = .none
+    subviews.forEach { $0.suppressFocusRingsRecursively() }
+  }
+}
+
 struct MetricCell: View {
   let label: String
   let value: String
@@ -446,7 +481,7 @@ struct DocumentProofPanel: View {
   private func suggestedTitle(for document: CandidateDocument) -> String {
     let base: String
     if document.kind.lowercased() == "pdf" && document.title.localizedCaseInsensitiveContains("cv") {
-      base = "Candidate CV"
+      base = "Local Candidate - CV"
     } else {
       base = cleanTitle(for: document)
     }

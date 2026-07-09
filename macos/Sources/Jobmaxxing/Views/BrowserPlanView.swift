@@ -112,28 +112,29 @@ struct BrowserPolicyEditor: View {
 
       VStack(alignment: .leading, spacing: 6) {
         ForEach(PermissionMode.allCases) { mode in
-          Button {
-            updatePolicy { $0.permissionMode = mode }
-          } label: {
-            HStack(alignment: .top, spacing: 10) {
-              Image(systemName: store.state.browserPolicy.permissionMode == mode ? "checkmark.circle.fill" : "circle")
-                .foregroundStyle(store.state.browserPolicy.permissionMode == mode ? Color.green : Color.secondary)
-                .padding(.top, 2)
-              VStack(alignment: .leading, spacing: 3) {
-                Text(mode.label)
-                  .font(.headline)
-                Text(mode.detail)
-                  .font(.caption)
-                  .foregroundStyle(.secondary)
-                  .fixedSize(horizontal: false, vertical: true)
-              }
-              Spacer()
+          HStack(alignment: .top, spacing: 10) {
+            Image(systemName: store.state.browserPolicy.permissionMode == mode ? "checkmark.circle.fill" : "circle")
+              .foregroundStyle(store.state.browserPolicy.permissionMode == mode ? Color.green : Color.secondary)
+              .padding(.top, 2)
+            VStack(alignment: .leading, spacing: 3) {
+              Text(mode.label)
+                .font(.headline)
+              Text(mode.detail)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
             }
-            .padding(.vertical, 6)
-            .padding(.horizontal, 8)
-            .modifier(SelectedRowSurface(isSelected: store.state.browserPolicy.permissionMode == mode))
+            Spacer()
           }
-          .buttonStyle(.plain)
+          .padding(.vertical, 6)
+          .padding(.horizontal, 8)
+          .modifier(SelectedRowSurface(isSelected: store.state.browserPolicy.permissionMode == mode))
+          .contentShape(RoundedRectangle(cornerRadius: 6))
+          .onTapGesture {
+            updatePolicy { $0.permissionMode = mode }
+          }
+          .accessibilityAddTraits(.isButton)
+          .accessibilityLabel(mode.label)
         }
       }
 

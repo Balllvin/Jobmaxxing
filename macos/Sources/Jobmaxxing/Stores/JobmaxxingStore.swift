@@ -2636,12 +2636,24 @@ final class JobmaxxingStore: ObservableObject {
   }
 
   static func normalizedUserFacingText(_ value: String) -> String {
+    let protectedSourceRole = "__SOURCE_WORKING_STUDENT__"
     var next = value
       .replacingOccurrences(of: "&amp;", with: "&")
       .replacingOccurrences(of: #"\bAIML\s*-\s*"#, with: "", options: .regularExpression)
       .replacingOccurrences(of: #"\bAIML\b"#, with: "AI and ML", options: .regularExpression)
       .replacingOccurrences(of: #"\bAI/ML\b"#, with: "AI and ML", options: .regularExpression)
+      .replacingOccurrences(of: #"\bData\s*/\s*ML\s*/\s*AI Intern\b"#, with: "Data, ML, and AI Intern", options: .regularExpression)
       .replacingOccurrences(of: #"\bData\s*/\s*ML\s*/\s*AI\b"#, with: "Data, ML, and AI", options: .regularExpression)
+      .replacingOccurrences(of: #"\bIntern Applied AI\s*&\s*AI-Platform\b"#, with: "Applied AI and AI Platform Intern", options: .regularExpression)
+      .replacingOccurrences(of: #"\bApplied AI\s*&\s*AI-Platform Intern\b"#, with: "Applied AI and AI Platform Intern", options: .regularExpression)
+      .replacingOccurrences(of: "Daten trifft auf Systeme: Trainee-Programm, 80-100%", with: "Data and Systems Trainee Program, 80-100%")
+      .replacingOccurrences(of: "Contracted as working student", with: "Contracted as a working student (source role title: \(protectedSourceRole))")
+      .replacingOccurrences(of: "source role title: Working Student", with: "source role title: \(protectedSourceRole)")
+      .replacingOccurrences(of: protectedSourceRole, with: "working student")
+      .replacingOccurrences(
+        of: "Apple Mail contract evidence: Local Candidate Vertrag.pdf",
+        with: "Apple Mail contract evidence: Local Candidate contract.pdf (original German filename: Local Candidate Vertrag.pdf)"
+      )
     next = next.replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression)
     return next.trimmed
   }

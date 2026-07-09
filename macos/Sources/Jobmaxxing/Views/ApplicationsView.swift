@@ -7,6 +7,7 @@ struct ApplicationsView: View {
   @State private var role = ""
   @State private var sourceURL = ""
   @State private var description = ""
+  @State private var isAddingRole = false
 
   var body: some View {
     GeometryReader { proxy in
@@ -42,12 +43,12 @@ struct ApplicationsView: View {
             EmptyApplicationState(title: "Add a role.")
           }
           ForEach(store.state.jobs) { job in
-            Button {
-              store.selectedJobID = job.id
-            } label: {
-              ApplicationListRow(job: job, isSelected: store.selectedJobID == job.id)
-            }
-            .buttonStyle(.plain)
+            ApplicationListRow(job: job, isSelected: store.selectedJobID == job.id)
+              .onTapGesture {
+                store.selectedJobID = job.id
+              }
+              .accessibilityAddTraits(.isButton)
+              .accessibilityLabel("\(job.role), \(job.company)")
           }
         }
       }
@@ -62,27 +63,48 @@ struct ApplicationsView: View {
   }
 
   private var addRoleForm: some View {
-    DisclosureGroup("Add role") {
-      VStack(alignment: .leading, spacing: 8) {
-        TextField("Company", text: $company)
-        TextField("Role", text: $role)
-        TextField("Job post URL", text: $sourceURL)
-        MultilineInput(
-          title: "Role details, requirements, and notes",
-          text: $description,
-          minHeight: 130,
-          improveContext: "Company: \(company)\nRole: \(role)\nSource: \(sourceURL)",
-          improveKind: "role details"
-        )
-        Button {
-          saveRole()
-        } label: {
-          Label("Save role", systemImage: "briefcase")
-        }
-        .buttonStyle(.borderedProminent)
-        .disabled(company.trimmed.isEmpty || role.trimmed.isEmpty || description.trimmed.isEmpty)
+    VStack(alignment: .leading, spacing: 8) {
+      HStack(spacing: 6) {
+        Image(systemName: isAddingRole ? "chevron.down" : "chevron.right")
+          .font(.caption.weight(.semibold))
+          .foregroundStyle(.secondary)
+          .frame(width: 10)
+        Text("Add role")
+          .font(.body.weight(.medium))
+          .foregroundStyle(.primary)
+        Spacer(minLength: 0)
       }
-      .padding(.top, 8)
+      .contentShape(Rectangle())
+      .onTapGesture {
+        withAnimation(.easeInOut(duration: 0.14)) {
+          isAddingRole.toggle()
+        }
+      }
+      .accessibilityAddTraits(.isButton)
+      .accessibilityLabel(isAddingRole ? "Collapse add role" : "Expand add role")
+
+      if isAddingRole {
+        VStack(alignment: .leading, spacing: 8) {
+          TextField("Company", text: $company)
+          TextField("Role", text: $role)
+          TextField("Job post URL", text: $sourceURL)
+          MultilineInput(
+            title: "Role details, requirements, and notes",
+            text: $description,
+            minHeight: 130,
+            improveContext: "Company: \(company)\nRole: \(role)\nSource: \(sourceURL)",
+            improveKind: "role details"
+          )
+          Button {
+            saveRole()
+          } label: {
+            Label("Save role", systemImage: "briefcase")
+          }
+          .buttonStyle(.borderedProminent)
+          .disabled(company.trimmed.isEmpty || role.trimmed.isEmpty || description.trimmed.isEmpty)
+        }
+        .padding(.leading, 16)
+      }
     }
   }
 
@@ -132,96 +154,56 @@ private struct ApplicationDetailView: View {
   let openCompany: (String) -> Void
   let compact: Bool
   @State private var localNotes = ""
-  @State private var openStatus = ""
+
+  private var selectedCompany: CompanyProfile? {
+    guard let job = store.selectedJob else { return nil }
+    return store.companyProfiles.first { $0.applicationIDs.contains(job.id) || $0.name.caseInsensitiveCompare(job.company) == .orderedSame }
+  }
 
   var body: some View {
     if let job = store.selectedJob {
       ScrollView {
         VStack(alignment: .leading, spacing: 18) {
-          VStack(alignment: .leading, spacing: 12) {
-            HStack(alignment: .top, spacing: 16) {
-              VStack(alignment: .leading, spacing: 6) {
-                Text(job.role)
-                  .font((compact ? Font.title : Font.largeTitle).weight(.bold))
-                  .fixedSize(horizontal: false, vertical: true)
-                Text(job.company)
-                  .font(.title3)
-                  .foregroundStyle(.secondary)
-              }
-              Spacer(minLength: 12)
-              TagText(text: job.stage.label)
-            }
-
-            ViewThatFits(in: .horizontal) {
-              HStack(spacing: 12) {
-                stagePicker(for: job)
-                draftButton(for: job)
-              }
-              VStack(alignment: .leading, spacing: 8) {
-                stagePicker(for: job)
-                draftButton(for: job)
-              }
-            }
-
-            ViewThatFits(in: .horizontal) {
-              HStack(spacing: 10) {
-                jobPostButton(for: job)
-                hiringPeopleButton(for: job)
-              }
-              VStack(alignment: .leading, spacing: 8) {
-                jobPostButton(for: job)
-                hiringPeopleButton(for: job)
-              }
-            }
-            if !openStatus.trimmed.isEmpty {
-              Text(openStatus)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-            }
-
-            ApplicationMetaRow(label: "Job post") {
-              if let source = ExternalURL.normalizedWebURL(job.sourceURL) {
-                Link(applicationSourceLabel(for: job.sourceURL), destination: source)
-                  .help(source.absoluteString)
-              } else {
-                Text("No job post")
-                  .foregroundStyle(.secondary)
-              }
-            }
-            ApplicationMetaRow(label: "Score") {
-              Text("\(job.score)")
-                .font(.body.monospaced().weight(.semibold))
-            }
-
-            if !job.risks.isEmpty {
-              ApplicationMetaRow(label: "Check") {
-                Text(job.risks.joined(separator: "; "))
-                  .foregroundStyle(.secondary)
-              }
-            }
-
-            if !job.nextActions.isEmpty {
-              Divider()
-              Text("Next")
-                .font(.caption.weight(.bold))
-                .foregroundStyle(.secondary)
-              CompactList(items: job.nextActions)
+          VStack(alignment: .leading, spacing: 14) {
+            ApplicationHeader(job: job, compact: compact) {
+              stageMenu(for: job)
             }
 
             if !job.description.trimmed.isEmpty {
-              Divider()
               Text(job.description)
                 .font(.body)
                 .foregroundStyle(.secondary)
+                .lineSpacing(2)
                 .fixedSize(horizontal: false, vertical: true)
             }
 
+            ApplicationSourceStrip(
+              job: job,
+              company: selectedCompany,
+              openCompany: openApplicationCompany
+            )
+
+            primaryDraftButton(for: job)
+
+            let toDoItems = applicationToDoItems(for: job)
+            if !toDoItems.isEmpty {
+              Divider()
+              ApplicationSectionHeader("To do")
+              CompactList(items: toDoItems)
+            }
+
             if !job.keywords.isEmpty {
-              FlowTags(items: job.keywords)
+              ApplicationInlineTags(items: Array(job.keywords.prefix(5)))
             }
           }
 
-          ApplicationCompanyPanel(job: job, openCompany: openCompany)
+          if let draft = job.draft {
+            DraftView(job: job, draft: draft)
+          } else {
+            ApplicationFlatSection(title: "Draft") {
+              EmptyApplicationState(title: "No draft yet.")
+            }
+          }
 
           ApplicationDocumentsPanel(job: job)
 
@@ -244,12 +226,8 @@ private struct ApplicationDetailView: View {
             }
           }
 
-          if let draft = job.draft {
-            DraftView(job: job, draft: draft)
-          } else {
-            EmptyApplicationState(title: "Draft application after source review.")
-          }
         }
+        .frame(maxWidth: 840, alignment: .topLeading)
         .frame(maxWidth: .infinity, alignment: .topLeading)
       }
     } else {
@@ -258,82 +236,169 @@ private struct ApplicationDetailView: View {
     }
   }
 
-  private func stagePicker(for job: JobRecord) -> some View {
-    Picker("Stage", selection: Binding(
-      get: { job.stage },
-      set: { store.updateStage(jobID: job.id, stage: $0) }
-    )) {
+  private func stageMenu(for job: JobRecord) -> some View {
+    Menu {
       ForEach(JobStage.allCases) { stage in
-        Text(stage.label).tag(stage)
+        Button(stage.label) {
+          store.updateStage(jobID: job.id, stage: stage)
+        }
       }
+    } label: {
+      HStack(spacing: 4) {
+        Text(job.stage.label)
+          .font(.caption.weight(.semibold))
+        Image(systemName: "chevron.down")
+          .font(.caption2.weight(.semibold))
+      }
+      .foregroundStyle(.secondary)
     }
-    .frame(maxWidth: compact ? .infinity : 280, alignment: .leading)
+    .menuStyle(.borderlessButton)
+    .buttonStyle(.plain)
+    .controlSize(.small)
+    .focusable(false)
   }
 
-  private func draftButton(for job: JobRecord) -> some View {
-    Button {
-      store.generateDraft(jobID: job.id)
-    } label: {
-      Label("Draft application", systemImage: "wand.and.stars")
+  @ViewBuilder
+  private func primaryDraftButton(for job: JobRecord) -> some View {
+    if applicationDraftActionIsPrimary(hasDraft: job.draft != nil) {
+      Button {
+        store.generateDraft(jobID: job.id)
+      } label: {
+        Label(applicationDraftActionTitle(hasDraft: false), systemImage: "wand.and.stars")
+      }
+      .buttonStyle(.borderedProminent)
+      .focusable(false)
     }
-    .buttonStyle(.borderedProminent)
   }
 
-  private func jobPostButton(for job: JobRecord) -> some View {
-    Button {
-      openStatus = openApplicationURL(job.sourceURL, label: "Job post")
-    } label: {
-      Label("Open job post", systemImage: "safari")
-    }
-    .disabled(job.sourceURL.trimmed.isEmpty)
+  private func openApplicationCompany(_ company: CompanyProfile) {
+    store.selectedCompanyID = company.id
+    store.prepareCompanyResearch(companyID: company.id)
+    openCompany(company.id)
   }
+}
 
-  private func hiringPeopleButton(for job: JobRecord) -> some View {
-    Button {
-      openStatus = openApplicationURL(linkedInPeopleSearch(company: job.company, role: job.role), label: "Hiring people")
-    } label: {
-      Label("Find hiring people", systemImage: "person.text.rectangle")
+private struct ApplicationHeader<StageControl: View>: View {
+  let job: JobRecord
+  let compact: Bool
+  @ViewBuilder var stageControl: StageControl
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 8) {
+      HStack(alignment: .firstTextBaseline, spacing: 10) {
+        Text(job.role)
+          .font((compact ? Font.title2 : Font.title).weight(.semibold))
+          .fixedSize(horizontal: false, vertical: true)
+        Spacer(minLength: 12)
+        Text("\(job.score)")
+          .font(.body.monospaced().weight(.semibold))
+          .foregroundStyle(.secondary)
+      }
+
+      ViewThatFits(in: .horizontal) {
+        HStack(alignment: .center, spacing: 10) {
+          Text(job.company)
+            .font(.headline.weight(.medium))
+          if job.draft != nil {
+            Text("Draft ready")
+              .font(.caption.weight(.semibold))
+              .foregroundStyle(.secondary)
+          }
+          Spacer(minLength: 8)
+          stageControl
+        }
+        VStack(alignment: .leading, spacing: 8) {
+          Text(job.company)
+            .font(.headline.weight(.medium))
+          stageControl
+        }
+      }
     }
   }
 }
 
-private struct ApplicationCompanyPanel: View {
-  @EnvironmentObject private var store: JobmaxxingStore
+private struct ApplicationSourceStrip: View {
   let job: JobRecord
-  let openCompany: (String) -> Void
+  let company: CompanyProfile?
+  let openCompany: (CompanyProfile) -> Void
 
-  private var company: CompanyProfile? {
-    store.companyProfiles.first { $0.applicationIDs.contains(job.id) || $0.name.caseInsensitiveCompare(job.company) == .orderedSame }
+  var body: some View {
+    ViewThatFits(in: .horizontal) {
+      HStack(alignment: .firstTextBaseline, spacing: 12) {
+        sourceLabel
+        sourceLinks
+      }
+      VStack(alignment: .leading, spacing: 6) {
+        sourceLabel
+        sourceLinks
+      }
+    }
+    .font(.subheadline)
+  }
+
+  private var sourceLabel: some View {
+    Text("Links")
+      .font(.caption.weight(.semibold))
+      .foregroundStyle(.secondary)
+  }
+
+  private var sourceLinks: some View {
+    HStack(alignment: .firstTextBaseline, spacing: 10) {
+      if let source = ExternalURL.normalizedWebURL(job.sourceURL) {
+        Link("Job post", destination: source)
+          .help(source.absoluteString)
+          .focusable(false)
+      } else {
+        Text("No job post")
+          .foregroundStyle(.secondary)
+      }
+
+      if let company {
+        ApplicationTextAction("Company") {
+          openCompany(company)
+        }
+      }
+
+      if let hiringURL = ExternalURL.normalizedWebURL(linkedInPeopleSearch(company: job.company, role: job.role)) {
+        Link("Hiring people", destination: hiringURL)
+          .help(hiringURL.absoluteString)
+          .focusable(false)
+      }
+    }
+  }
+}
+
+private struct ApplicationTextAction: View {
+  let title: String
+  let action: () -> Void
+
+  init(_ title: String, action: @escaping () -> Void) {
+    self.title = title
+    self.action = action
   }
 
   var body: some View {
-    ApplicationFlatSection(title: "Company") {
-      if let company {
-        VStack(alignment: .leading, spacing: 10) {
-          Text(company.name)
-            .font(.headline)
-          Text(company.research.status)
-            .font(.caption)
-            .foregroundStyle(.secondary)
-          if !company.summary.trimmed.isEmpty {
-            Text(company.summary)
-              .font(.caption)
-              .foregroundStyle(.secondary)
-              .fixedSize(horizontal: false, vertical: true)
-          }
-          Button {
-            store.selectedCompanyID = company.id
-            store.prepareCompanyResearch(companyID: company.id)
-            openCompany(company.id)
-          } label: {
-            Label("Open company", systemImage: "building.2")
-          }
-          .buttonStyle(.borderedProminent)
-        }
-      } else {
-        EmptyApplicationState(title: "Company profile appears after saving.")
+    Button(action: action) {
+      Text(title)
+        .foregroundStyle(Color.accentColor)
+    }
+    .buttonStyle(.plain)
+    .focusable(false)
+  }
+}
+
+private struct ApplicationInlineTags: View {
+  let items: [String]
+
+  var body: some View {
+    HStack(spacing: 8) {
+      ForEach(items, id: \.self) { item in
+        Text(item)
+          .font(.caption)
+          .foregroundStyle(.secondary)
       }
     }
+    .lineLimit(1)
   }
 }
 
@@ -350,12 +415,9 @@ private struct ApplicationDocumentsPanel: View {
   }
 
   var body: some View {
-    ApplicationFlatSection(title: "Documents") {
+    ApplicationFlatSection(title: "Proof") {
       HStack(alignment: .firstTextBaseline, spacing: 12) {
-        Text("Proof files for this role. Nothing sends here.")
-          .font(.caption)
-          .foregroundStyle(.secondary)
-        Spacer()
+        Spacer(minLength: 0)
         Button {
           importing = true
         } label: {
@@ -374,14 +436,14 @@ private struct ApplicationDocumentsPanel: View {
       } else {
         VStack(alignment: .leading, spacing: 8) {
           ForEach(store.state.documents.prefix(4)) { document in
-            Button {
-              store.selectedDocumentID = document.id
-              proofMetadata = defaultProofMetadata(document: document, job: job)
-              taskStatus = ""
-            } label: {
-              ApplicationDocumentRow(document: document, isSelected: store.selectedDocumentID == document.id)
-            }
-            .buttonStyle(.plain)
+            ApplicationDocumentRow(document: document, isSelected: store.selectedDocumentID == document.id)
+              .onTapGesture {
+                store.selectedDocumentID = document.id
+                proofMetadata = defaultProofMetadata(document: document, job: job)
+                taskStatus = ""
+              }
+              .accessibilityAddTraits(.isButton)
+              .accessibilityLabel(document.title)
           }
 
           if store.state.documents.count > 4 {
@@ -535,7 +597,6 @@ private struct DraftView: View {
   @EnvironmentObject private var store: JobmaxxingStore
   let job: JobRecord
   let draft: ApplicationDraft
-  @State private var openStatus = ""
 
   private var draftContext: String {
     [
@@ -559,6 +620,15 @@ private struct DraftView: View {
           .font(.headline)
           .fixedSize(horizontal: false, vertical: true)
         Spacer(minLength: 8)
+        Button {
+          store.generateDraft(jobID: job.id)
+        } label: {
+          Text("Regenerate")
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(.secondary)
+        }
+        .buttonStyle(.plain)
+        .focusable(false)
         ImproveTextControl(
           currentText: draft.headline,
           context: draftContext,
@@ -599,21 +669,6 @@ private struct DraftView: View {
           kind: "contact message",
           onApply: { store.updateDraftRecruiterMessage(jobID: job.id, message: $0) }
         )
-        ViewThatFits(in: .horizontal) {
-          HStack {
-            draftHiringPeopleButton
-            draftJobPostButton
-          }
-          VStack(alignment: .leading, spacing: 8) {
-            draftHiringPeopleButton
-            draftJobPostButton
-          }
-        }
-        if !openStatus.trimmed.isEmpty {
-          Text(openStatus)
-            .font(.caption)
-            .foregroundStyle(.secondary)
-        }
         Text(draft.recruiterMessage)
           .textSelection(.enabled)
       }
@@ -638,22 +693,6 @@ private struct DraftView: View {
     }
   }
 
-  private var draftHiringPeopleButton: some View {
-    Button {
-      openStatus = openApplicationURL(linkedInPeopleSearch(company: job.company, role: job.role), label: "Hiring people")
-    } label: {
-      Label("Find hiring people", systemImage: "person.text.rectangle")
-    }
-  }
-
-  private var draftJobPostButton: some View {
-    Button {
-      openStatus = openApplicationURL(job.sourceURL, label: "Job post")
-    } label: {
-      Label("Open job post", systemImage: "safari")
-    }
-    .disabled(job.sourceURL.trimmed.isEmpty)
-  }
 }
 
 private struct ApplicationFlatSection<Content: View>: View {
@@ -663,12 +702,24 @@ private struct ApplicationFlatSection<Content: View>: View {
   var body: some View {
     VStack(alignment: .leading, spacing: 12) {
       Divider()
-      Text(title.uppercased())
-        .font(.caption.weight(.bold))
-        .foregroundStyle(.secondary)
+      ApplicationSectionHeader(title)
       content
     }
     .frame(maxWidth: .infinity, alignment: .leading)
+  }
+}
+
+private struct ApplicationSectionHeader: View {
+  let title: String
+
+  init(_ title: String) {
+    self.title = title
+  }
+
+  var body: some View {
+    Text(title.uppercased())
+      .font(.caption.weight(.bold))
+      .foregroundStyle(.secondary)
   }
 }
 
@@ -726,6 +777,29 @@ func linkedInPeopleSearch(company: String, role: String) -> String {
 
 func openApplicationURL(_ urlString: String, label: String) -> String {
   ExternalURL.openWebURL(urlString, label: label).message
+}
+
+func applicationDraftActionTitle(hasDraft: Bool) -> String {
+  hasDraft ? "Regenerate draft" : "Draft application"
+}
+
+func applicationDraftActionIsPrimary(hasDraft: Bool) -> Bool {
+  !hasDraft
+}
+
+func applicationToDoItems(for job: JobRecord) -> [String] {
+  let risks = job.risks.map { risk in
+    risk.hasPrefix("Before submitting:") ? risk : "Before submitting: \(risk)"
+  }
+  var items: [String] = []
+  for item in risks + job.nextActions {
+    let cleanItem = item.trimmed
+    guard !cleanItem.isEmpty else { continue }
+    if !items.contains(where: { $0.caseInsensitiveCompare(cleanItem) == .orderedSame }) {
+      items.append(cleanItem)
+    }
+  }
+  return items
 }
 
 func applicationDocumentTitle(_ document: CandidateDocument) -> String {

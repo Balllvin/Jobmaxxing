@@ -169,26 +169,26 @@ private struct SettingsSidebarButton: View {
   @State private var isHovering = false
 
   var body: some View {
-    Button(action: action) {
-      HStack(alignment: .center, spacing: 11) {
-        Image(systemName: page.systemImage)
-          .font(.system(size: 15, weight: .medium))
-          .frame(width: 20)
-        Text(page.title)
-          .font(.system(size: 15, weight: isSelected ? .semibold : .medium))
-          .lineLimit(1)
-        Spacer(minLength: 0)
-      }
-      .foregroundStyle(isSelected ? Color.primary : Color.secondary)
-      .padding(.horizontal, 10)
-      .frame(height: 36)
-      .frame(maxWidth: .infinity, alignment: .leading)
-      .background(isHovering && !isSelected ? AppTheme.hoverFill : Color.clear)
-      .modifier(SelectedRowSurface(isSelected: isSelected))
-      .contentShape(RoundedRectangle(cornerRadius: 6))
+    HStack(alignment: .center, spacing: 11) {
+      Image(systemName: page.systemImage)
+        .font(.system(size: 15, weight: .medium))
+        .frame(width: 20)
+      Text(page.title)
+        .font(.system(size: 15, weight: isSelected ? .semibold : .medium))
+        .lineLimit(1)
+      Spacer(minLength: 0)
     }
-    .buttonStyle(.plain)
+    .foregroundStyle(isSelected ? Color.primary : Color.secondary)
+    .padding(.horizontal, 10)
+    .frame(height: 36)
+    .frame(maxWidth: .infinity, alignment: .leading)
+    .background(isHovering && !isSelected ? AppTheme.hoverFill : Color.clear)
+    .modifier(SelectedRowSurface(isSelected: isSelected))
+    .contentShape(RoundedRectangle(cornerRadius: 6))
+    .onTapGesture(perform: action)
     .onHover { isHovering = $0 }
+    .accessibilityAddTraits(.isButton)
+    .accessibilityLabel(page.title)
   }
 }
 
@@ -1268,31 +1268,31 @@ private struct ConnectorRow: View {
   let onSelect: () -> Void
 
   var body: some View {
-    Button(action: onSelect) {
-      HStack(alignment: .center, spacing: 10) {
-        ConnectorStatusGlyph(state: connectorState(connector))
-        VStack(alignment: .leading, spacing: 5) {
-          Text(connector.label)
-            .font(.subheadline.weight(.semibold))
-            .lineLimit(1)
-          Text(connectorRowSentence(connector))
-            .font(.caption)
-            .foregroundStyle(.secondary)
-            .lineLimit(2)
-            .fixedSize(horizontal: false, vertical: true)
-        }
-        Spacer()
-        Image(systemName: "chevron.right")
-          .font(.caption.weight(.semibold))
-          .foregroundStyle(.tertiary)
+    HStack(alignment: .center, spacing: 10) {
+      ConnectorStatusGlyph(state: connectorState(connector))
+      VStack(alignment: .leading, spacing: 5) {
+        Text(connector.label)
+          .font(.subheadline.weight(.semibold))
+          .lineLimit(1)
+        Text(connectorRowSentence(connector))
+          .font(.caption)
+          .foregroundStyle(.secondary)
+          .lineLimit(2)
+          .fixedSize(horizontal: false, vertical: true)
       }
-      .padding(.vertical, 9)
-      .padding(.horizontal, 8)
-      .frame(maxWidth: .infinity, minHeight: 56, alignment: .leading)
-      .contentShape(RoundedRectangle(cornerRadius: 6))
-      .modifier(SelectedRowSurface(isSelected: isSelected))
+      Spacer()
+      Image(systemName: "chevron.right")
+        .font(.caption.weight(.semibold))
+        .foregroundStyle(.tertiary)
     }
-    .buttonStyle(.plain)
+    .padding(.vertical, 9)
+    .padding(.horizontal, 8)
+    .frame(maxWidth: .infinity, minHeight: 56, alignment: .leading)
+    .contentShape(RoundedRectangle(cornerRadius: 6))
+    .modifier(SelectedRowSurface(isSelected: isSelected))
+    .onTapGesture(perform: onSelect)
+    .accessibilityAddTraits(.isButton)
+    .accessibilityLabel(connector.label)
   }
 }
 

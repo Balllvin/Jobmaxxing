@@ -45,12 +45,12 @@ struct DashboardView: View {
       } else {
         LazyVStack(spacing: 0) {
           ForEach(jobs) { job in
-            Button {
-              openApplication(job.id)
-            } label: {
-              DashboardApplicationRow(job: job, isSelected: store.selectedJobID == job.id)
-            }
-            .buttonStyle(.plain)
+            DashboardApplicationRow(job: job, isSelected: store.selectedJobID == job.id)
+              .onTapGesture {
+                openApplication(job.id)
+              }
+              .accessibilityAddTraits(.isButton)
+              .accessibilityLabel("\(job.role), \(job.company)")
 
             if job.id != jobs.last?.id {
               Divider()
