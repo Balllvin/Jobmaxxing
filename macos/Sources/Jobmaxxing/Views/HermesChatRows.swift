@@ -4,6 +4,7 @@ import SwiftUI
 struct ChatMessageRow: View {
   let message: HermesChatMessage
   var showsDiagnosticContent = false
+  var usesHermesPresentation = true
   let onReply: () -> Void
   let onCopy: () -> Void
   @State private var expandedLongText = false
@@ -51,11 +52,13 @@ struct ChatMessageRow: View {
   }
 
   private var displayText: String {
-    HermesTranscriptPresentation.displayText(for: message, showsDiagnosticContent: showsDiagnosticContent)
+    guard usesHermesPresentation else { return message.text }
+    return HermesTranscriptPresentation.displayText(for: message, showsDiagnosticContent: showsDiagnosticContent)
   }
 
   private var shouldCollapseText: Bool {
-    HermesTranscriptPresentation.shouldCollapseDefaultText(for: message, displayText: displayText, showsDiagnosticContent: showsDiagnosticContent)
+    guard usesHermesPresentation else { return false }
+    return HermesTranscriptPresentation.shouldCollapseDefaultText(for: message, displayText: displayText, showsDiagnosticContent: showsDiagnosticContent)
   }
 
   private var visibleText: String {
@@ -64,7 +67,7 @@ struct ChatMessageRow: View {
   }
 
   private var hiddenDetails: String? {
-    guard !showsDiagnosticContent else { return nil }
+    guard usesHermesPresentation, !showsDiagnosticContent else { return nil }
     return HermesTranscriptPresentation.hiddenDefaultDetails(for: message)
   }
 

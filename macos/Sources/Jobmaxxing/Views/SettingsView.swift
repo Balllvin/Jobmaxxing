@@ -12,6 +12,8 @@ private func modelTierTitle(for id: String) -> String {
 }
 
 private enum SettingsPage: String, CaseIterable, Identifiable {
+  case setup
+  case codeHelp
   case account
   case providers
   case runtime
@@ -23,6 +25,8 @@ private enum SettingsPage: String, CaseIterable, Identifiable {
 
   var title: String {
     switch self {
+    case .setup: "Setup"
+    case .codeHelp: "Code Help"
     case .account: "Account"
     case .providers: "Models"
     case .runtime: "Runtime"
@@ -34,6 +38,8 @@ private enum SettingsPage: String, CaseIterable, Identifiable {
 
   var systemImage: String {
     switch self {
+    case .setup: "list.number"
+    case .codeHelp: "questionmark.bubble"
     case .account: "person.crop.circle"
     case .providers: "cpu"
     case .runtime: "point.3.connected.trianglepath.dotted"
@@ -47,7 +53,7 @@ private enum SettingsPage: String, CaseIterable, Identifiable {
 struct SettingsView: View {
   @EnvironmentObject private var store: JobmaxxingStore
   let onBack: (() -> Void)?
-  @State private var selectedPage: SettingsPage = .account
+  @State private var selectedPage: SettingsPage = .setup
   @State private var focusedConnectorID: String?
   @State private var installerStatus = ""
   @State private var hermesStatus = ""
@@ -64,7 +70,7 @@ struct SettingsView: View {
 
       Divider()
 
-      if selectedPage == .connections {
+      if selectedPage == .connections || selectedPage == .codeHelp {
         selectedContent
           .padding(.horizontal, 28)
           .padding(.vertical, 24)
@@ -88,6 +94,15 @@ struct SettingsView: View {
   @ViewBuilder
   private var selectedContent: some View {
     switch selectedPage {
+    case .setup:
+      SetupSettingsPage(
+        openConnections: { selectedPage = .connections },
+        openModels: { selectedPage = .providers },
+        openRuntime: { selectedPage = .runtime },
+        openProfile: { selectedPage = .profile }
+      )
+    case .codeHelp:
+      CodeHelpSettingsPage()
     case .account:
       AccountSettingsPage()
     case .providers:
@@ -286,9 +301,11 @@ private struct ModelProvidersSettingsPage: View {
 
 /// One horizontal rail: provider → model → effort for a single difficulty tier.
 private struct ModelTierRail: View {
+  @EnvironmentObject private var store: JobmaxxingStore
   @Binding var route: ModelRoute
   let connectors: [IntegrationConnector]
   let onOpenProviderConnection: (String) -> Void
+  @State private var isRefreshing = false
 
   private var currentProvider: ModelProviderChoice {
     ModelCatalog.provider(for: route)
@@ -299,11 +316,16 @@ private struct ModelTierRail: View {
   }
 
   private var modelChoices: [ModelChoice] {
-    currentProvider.models
+    store.modelChoices(for: currentProvider, retaining: route.model)
   }
 
   private var reasoningChoices: [ReasoningChoice] {
-    ModelCatalog.model(for: route)?.reasoningLevels ?? []
+    modelChoices.first(where: { $0.id == route.model })?.reasoningLevels ?? []
+  }
+
+  private var selectableProviders: [ModelProviderChoice] {
+    let readyIDs = Set(connectors.filter { $0.isEnabled && $0.isConnected }.map(\.id))
+    return ModelCatalog.providers.filter { $0.id == currentProvider.id || readyIDs.contains($0.id) }
   }
 
   private var providerID: Binding<String> {
@@ -313,8 +335,8 @@ private struct ModelTierRail: View {
         guard let provider = ModelCatalog.provider(id: nextID) else { return }
         route.provider = provider.name
         route.baseURL = provider.baseURL
-        route.keyReference = provider.keyReference
-        if let model = provider.models.first {
+        route.keyReference = store.modelKeyReference(for: provider)
+        if let model = store.modelChoices(for: provider).first {
           route.model = model.id
           route.reasoningEffort = defaultReasoning(for: model, existing: route.reasoningEffort)
         }
@@ -331,7 +353,7 @@ private struct ModelTierRail: View {
         return modelChoices.first?.id ?? route.model
       },
       set: { nextID in
-        guard let model = currentProvider.models.first(where: { $0.id == nextID }) else { return }
+        guard let model = modelChoices.first(where: { $0.id == nextID }) else { return }
         route.model = model.id
         route.reasoningEffort = defaultReasoning(for: model, existing: route.reasoningEffort)
       }
@@ -393,7 +415,7 @@ private struct ModelTierRail: View {
       .frame(width: 100, alignment: .leading)
 
       Picker("Provider", selection: providerID) {
-        ForEach(ModelCatalog.providers) { provider in
+        ForEach(selectableProviders) { provider in
           Text(providerDisplayName(provider)).tag(provider.id)
         }
       }
@@ -410,6 +432,23 @@ private struct ModelTierRail: View {
       .pickerStyle(.menu)
       .frame(maxWidth: .infinity, alignment: .leading)
       .disabled(modelChoices.isEmpty)
+
+      Button {
+        guard !isRefreshing else { return }
+        isRefreshing = true
+        Task { @MainActor in
+          await store.refreshModelInventory(for: currentProvider)
+          isRefreshing = false
+        }
+      } label: {
+        Image(systemName: "arrow.clockwise")
+          .font(.system(size: 13, weight: .semibold))
+          .frame(width: 28, height: 28)
+      }
+      .buttonStyle(.plain)
+      .disabled(isRefreshing)
+      .help(store.modelInventoryMessage(for: currentProvider.id) ?? "Refresh models from \(currentProvider.name)")
+      .accessibilityLabel("Refresh \(currentProvider.name) models")
 
       Group {
         if reasoningChoices.isEmpty {
@@ -456,8 +495,7 @@ private struct ModelTierRail: View {
   }
 
   private func providerDisplayName(_ provider: ModelProviderChoice) -> String {
-    let connected = connectors.first(where: { $0.id == provider.id }).map { $0.isEnabled && $0.isConnected } ?? false
-    return connected ? provider.name : "\(provider.name) · setup"
+    provider.name
   }
 
   private func defaultReasoning(for model: ModelChoice, existing: String?) -> String? {

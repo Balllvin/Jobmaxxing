@@ -48,6 +48,7 @@ final class JobmaxxingStore: ObservableObject {
   @Published private(set) var state: JobmaxxingState
   @Published private(set) var storageAlert: JobmaxxingStorageAlert?
   @Published private(set) var connectorCheckResults: [String: ConnectorCheckResult] = [:]
+  @Published private(set) var modelInventoryStatus: [String: String] = [:]
   @Published var selectedJobID: String?
   @Published var selectedDocumentID: String?
   @Published var selectedCompanyID: String?
@@ -142,6 +143,47 @@ final class JobmaxxingStore: ObservableObject {
 
   var enabledModelRoutes: [ModelRoute] {
     state.modelRoutes.filter(\.isEnabled)
+  }
+
+  func modelChoices(for provider: ModelProviderChoice, retaining modelID: String? = nil) -> [ModelChoice] {
+    let inventory = state.modelInventories?.first(where: { $0.providerID == provider.id })
+    return ModelCatalog.models(for: provider, inventory: inventory, retaining: modelID)
+  }
+
+  func modelInventoryMessage(for providerID: String) -> String? {
+    modelInventoryStatus[providerID]
+  }
+
+  func modelKeyReference(for provider: ModelProviderChoice) -> String {
+    let configured = integrationConnectors
+      .first(where: { $0.id == provider.id })?
+      .configFields?
+      .first(where: { $0.id == "api-key-ref" })?
+      .value
+      .trimmed ?? ""
+    return configured.isEmpty ? provider.keyReference : configured
+  }
+
+  func refreshModelInventory(for provider: ModelProviderChoice) async {
+    modelInventoryStatus[provider.id] = "Refreshing models…"
+    do {
+      let modelIDs = try await ModelInventoryService.discover(
+        provider: provider,
+        keyReference: modelKeyReference(for: provider)
+      )
+      var inventories = state.modelInventories ?? []
+      let next = ModelInventory(providerID: provider.id, modelIDs: modelIDs)
+      if let index = inventories.firstIndex(where: { $0.providerID == provider.id }) {
+        inventories[index] = next
+      } else {
+        inventories.append(next)
+      }
+      state.modelInventories = inventories
+      modelInventoryStatus[provider.id] = "\(modelIDs.count) models available."
+      persist()
+    } catch {
+      modelInventoryStatus[provider.id] = error.localizedDescription
+    }
   }
 
   var hermesSettings: HermesSettings {
@@ -2865,14 +2907,6 @@ final class JobmaxxingStore: ObservableObject {
 
   private func applyProfileDefaults() -> Bool {
     var changed = false
-    if (state.profile.headline ?? "").trimmed.isEmpty {
-      state.profile.headline = "Local candidate profile. Add a headline before generating applications."
-      changed = true
-    }
-    if (state.profile.about ?? "").trimmed.isEmpty {
-      state.profile.about = "Add reviewed experience, evidence, and project details before generating applications."
-      changed = true
-    }
     if state.profile.experience == nil {
       state.profile.experience = Self.defaultProfileExperience
       changed = true
@@ -5366,7 +5400,7 @@ extension JobmaxxingStore {
 
   static let defaultState = JobmaxxingState(
     profile: CandidateProfile(
-      name: "Local Candidate",
+      name: "Candidate",
       headline: "",
       linkedInURL: "",
       about: "",

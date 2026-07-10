@@ -112,6 +112,7 @@ struct JobmaxxingState: Codable {
   var documentIndexStatus: DocumentIndexStatus?
   var events: [ActivityEvent]
   var modelRoutes: [ModelRoute]
+  var modelInventories: [ModelInventory]? = nil
   var hermes: HermesSettings?
   var hermesChat: HermesChatState?
   var currentGoal: JobmaxxingGoal? = nil
@@ -479,6 +480,11 @@ struct ModelRoute: Identifiable, Codable, Hashable {
   var keyReference: String
   var isEnabled: Bool
   var isConnected: Bool
+}
+
+struct ModelInventory: Codable, Hashable {
+  var providerID: String
+  var modelIDs: [String]
 }
 
 struct HermesSettings: Codable, Hashable {
