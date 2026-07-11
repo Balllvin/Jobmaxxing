@@ -66,14 +66,14 @@ final class HermesChatFormattingTests: XCTestCase {
   }
 
   func testUnknownSlashCommandPassesThroughForDynamicHermesSkills() {
-    XCTAssertEqual(HermesNativeCommandCatalog.commandID(from: "/jobmaxxing-orchestrator review Example Devices"), "jobmaxxing-orchestrator")
+    XCTAssertEqual(HermesNativeCommandCatalog.commandID(from: "/jobmaxxing-orchestrator review ExampleCo"), "jobmaxxing-orchestrator")
     XCTAssertEqual(
       HermesNativeCommandCatalog.commandText(
         commandID: "jobmaxxing-orchestrator",
-        rawText: "/jobmaxxing-orchestrator review Example Devices",
-        visibleText: "/jobmaxxing-orchestrator review Example Devices"
+        rawText: "/jobmaxxing-orchestrator review ExampleCo",
+        visibleText: "/jobmaxxing-orchestrator review ExampleCo"
       ),
-      "/jobmaxxing-orchestrator review Example Devices"
+      "/jobmaxxing-orchestrator review ExampleCo"
     )
   }
 
@@ -243,7 +243,7 @@ final class HermesChatFormattingTests: XCTestCase {
       hermesMessage(
         id: "update-assistant",
         role: "assistant",
-        text: "Checking Hermes checkout state: ~/hermes-agent",
+        text: "Checking Hermes checkout state: ~/.hermes/hermes-agent",
         commandID: "update",
         traces: [
           HermesTraceStep(
@@ -255,18 +255,18 @@ final class HermesChatFormattingTests: XCTestCase {
           )
         ]
       ),
-      hermesMessage(id: "example-devices-user", role: "user", text: "I interviewed at Example Devices with Riley."),
+      hermesMessage(id: "exampleco-user", role: "user", text: "I interviewed at ExampleCo with Example Contact."),
       hermesMessage(
-        id: "example-devices-assistant",
+        id: "exampleco-assistant",
         role: "assistant",
-        text: "Done. I saved the debrief into ~/Library/Application Support/Jobmaxxing/state.json."
+        text: "Done. I saved the debrief into ~/Library/Application Support/Jobmaxxing/jobmaxxing.json."
       ),
       hermesMessage(id: "status-user", role: "user", text: "Status", commandID: "status")
     ]
 
     let sections = HermesTranscriptPresentation.sections(for: messages)
 
-    XCTAssertEqual(sections.visibleMessages.map(\.id), ["example-devices-user", "example-devices-assistant"])
+    XCTAssertEqual(sections.visibleMessages.map(\.id), ["exampleco-user", "exampleco-assistant"])
     XCTAssertEqual(sections.diagnosticMessages.map(\.id), ["update-user", "update-assistant", "status-user"])
     XCTAssertEqual(
       HermesTranscriptPresentation.latestSummary(from: sections.latestUsefulAssistant),
@@ -275,7 +275,7 @@ final class HermesChatFormattingTests: XCTestCase {
   }
 
   func testTranscriptPresentationCollapsesLongUserDictation() {
-    let longText = String(repeating: "Example Devices interview detail. ", count: 80)
+    let longText = String(repeating: "ExampleCo interview detail. ", count: 80)
     let message = hermesMessage(id: "long-user", role: "user", text: longText)
 
     XCTAssertTrue(
@@ -300,7 +300,7 @@ final class HermesChatFormattingTests: XCTestCase {
       id: "assistant",
       role: "assistant",
       text: """
-      Done. I saved the Example Devices debrief into ~/Library/Application Support/Jobmaxxing/state.json.
+      Done. I saved the ExampleCo debrief into ~/Library/Application Support/Jobmaxxing/jobmaxxing.json.
       Verification:
       - Ran npm run test; one unrelated failure from ~/.hermes/Hermes Agent.
       """
@@ -308,7 +308,7 @@ final class HermesChatFormattingTests: XCTestCase {
 
     XCTAssertEqual(
       HermesTranscriptPresentation.displayText(for: message, showsDiagnosticContent: false),
-      "Done. I saved the Example Devices debrief into the local Jobmaxxing data file."
+      "Done. I saved the ExampleCo debrief into the local Jobmaxxing data file."
     )
     XCTAssertTrue(HermesTranscriptPresentation.hiddenDefaultDetails(for: message)?.contains("npm run test") ?? false)
     XCTAssertTrue(HermesTranscriptPresentation.hiddenDefaultDetails(for: message)?.contains("~/.hermes") ?? false)

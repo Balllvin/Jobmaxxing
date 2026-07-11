@@ -5,8 +5,22 @@ struct ContentView: View {
   @State private var selection: AppSection = .dashboard
   @State private var lastPrimarySelection: AppSection = .dashboard
   @State private var importingDocuments = false
-  @State private var isSidebarCollapsed = false
+  @State private var isProcessingDocumentImport = false
+  @State private var documentImportStatus = ""
+  @State private var documentImportSucceeded = true
+  @State private var columnVisibility: NavigationSplitViewVisibility = .all
   @State private var contactsCompanyFilterID = ""
+  @State private var applicationNoteDrafts: [String: String] = [:]
+  @State private var applicationIntakeDraft = ApplicationIntakeDraft()
+  @State private var interviewNoteDrafts: [String: String] = [:]
+  @State private var writingDrafts: [String: String] = [:]
+  @State private var freeformWritingDraft = ""
+  @State private var browserDrafts: [String: BrowserWorkspaceDraft] = [:]
+  @State private var companyDrafts: [String: CompanyWorkspaceDraft] = [:]
+  @State private var companyDirectoryDraft = CompanyDirectoryDraft()
+  @State private var contactWorkspaceDraft = ContactWorkspaceDraft()
+  @State private var hermesDraft = ""
+  @State private var hermesAttachmentIDs: [String] = []
   @AppStorage("jobmaxxing.selectedSection") private var savedSectionID = AppSection.dashboard.rawValue
   @AppStorage("jobmaxxing.selectedJobID") private var savedJobID = ""
   @AppStorage("jobmaxxing.selectedCompanyID") private var savedCompanyID = ""
@@ -18,21 +32,50 @@ struct ContentView: View {
           selection = lastPrimarySelection
         }
       } else {
-        HStack(spacing: 0) {
-          SidebarView(selection: $selection, isCollapsed: $isSidebarCollapsed)
-            .frame(width: isSidebarCollapsed ? 64 : 240)
-
-          Divider()
-
+        NavigationSplitView(columnVisibility: $columnVisibility) {
+          SidebarView(selection: $selection)
+            .navigationSplitViewColumnWidth(min: 184, ideal: 224, max: 260)
+        } detail: {
           detailView
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(AppBackdrop())
         }
-        .animation(.easeInOut(duration: 0.18), value: isSidebarCollapsed)
+        .navigationSplitViewStyle(.balanced)
       }
     }
-    .background(AppTheme.canvas)
-    .background(FocusRingSuppressor().allowsHitTesting(false))
-    .tint(Color.secondary)
+    .tint(AppTheme.accent)
+    .overlay(alignment: .topTrailing) {
+      if isProcessingDocumentImport || !documentImportStatus.isEmpty {
+        HStack(spacing: 8) {
+          if isProcessingDocumentImport {
+            ProgressView()
+              .controlSize(.small)
+          } else {
+            Image(systemName: documentImportSucceeded ? "checkmark.circle" : "exclamationmark.triangle")
+              .foregroundStyle(documentImportSucceeded ? Color.secondary : Color.red)
+          }
+          Text(isProcessingDocumentImport ? "Importing documents…" : documentImportStatus)
+            .font(.caption)
+            .lineLimit(3)
+          if !isProcessingDocumentImport {
+            Button {
+              documentImportStatus = ""
+            } label: {
+              Image(systemName: "xmark")
+                .frame(width: 44, height: 44)
+            }
+            .buttonStyle(LiquidPressButtonStyle())
+            .accessibilityLabel("Dismiss import status")
+          }
+        }
+        .padding(.leading, 12)
+        .padding(.trailing, 4)
+        .padding(.vertical, 4)
+        .frame(maxWidth: 420, alignment: .leading)
+        .liquidGlassSurface(.strong, cornerRadius: AppTheme.radiusMedium)
+        .padding(12)
+      }
+    }
     .onAppear {
       restoreSavedSelection()
     }
@@ -70,13 +113,35 @@ struct ContentView: View {
       allowedContentTypes: DocumentImportTypes.allowed,
       allowsMultipleSelection: true
     ) { result in
-      do {
-        try store.importDocuments(from: try result.get())
-      } catch {
-        store.reportStorageIssue(
-          title: "Could not import documents",
-          message: "Jobmaxxing could not copy the selected file into local storage. Check file permissions and try again. Error: \(error.localizedDescription)"
-        )
+      Task { @MainActor in
+        isProcessingDocumentImport = true
+        documentImportStatus = ""
+        documentImportSucceeded = true
+        defer { isProcessingDocumentImport = false }
+        do {
+          let outcome = try await store.importDocuments(from: try result.get())
+          documentImportStatus = store.state.documentIndexStatus?.message ?? outcome.summary
+          documentImportSucceeded = outcome.failures.isEmpty
+            && (store.state.documentIndexStatus?.succeeded ?? true)
+          if !outcome.failures.isEmpty {
+            store.reportStorageIssue(
+              title: "Some documents could not be imported",
+              message: outcome.summary
+            )
+          } else if let indexStatus = store.state.documentIndexStatus, !indexStatus.succeeded {
+            store.reportStorageIssue(
+              title: "Document imported without search indexing",
+              message: indexStatus.message
+            )
+          }
+        } catch {
+          documentImportStatus = ""
+          documentImportSucceeded = false
+          store.reportStorageIssue(
+            title: "Could not import documents",
+            message: "Jobmaxxing could not copy the selected file into local storage. Check file permissions and try again. Error: \(error.localizedDescription)"
+          )
+        }
       }
     }
   }
@@ -105,14 +170,20 @@ struct ContentView: View {
         selection = .applications
       }
     case .chat:
-      HermesChatView()
+      HermesChatView(draft: $hermesDraft, attachmentIDs: $hermesAttachmentIDs)
     case .applications:
-      ApplicationsView { companyID in
-        store.selectedCompanyID = companyID
-        selection = .companies
-      }
+      ApplicationsView(
+        openCompany: { companyID in
+          store.selectedCompanyID = companyID
+          selection = .companies
+        },
+        intakeDraft: $applicationIntakeDraft,
+        noteDrafts: $applicationNoteDrafts
+      )
     case .companies:
       CompaniesView(
+        workspaceDrafts: $companyDrafts,
+        directoryDraft: $companyDirectoryDraft,
         openApplication: { jobID in
           store.selectedJobID = jobID
           selection = .applications
@@ -124,16 +195,20 @@ struct ContentView: View {
         }
       )
     case .contacts:
-      ContactsView(initialCompanyID: contactsCompanyFilterID) { companyID in
-        store.selectedCompanyID = companyID
-        selection = .companies
-      }
+      ContactsView(
+        workspaceDraft: $contactWorkspaceDraft,
+        initialCompanyID: contactsCompanyFilterID,
+        openCompany: { companyID in
+          store.selectedCompanyID = companyID
+          selection = .companies
+        }
+      )
     case .writing:
-      WritingView()
+      WritingView(draftBuffers: $writingDrafts, freeformDraft: $freeformWritingDraft)
     case .interviews:
-      InterviewsView()
+      InterviewsView(noteDrafts: $interviewNoteDrafts)
     case .browser:
-      BrowserPlanView()
+      BrowserPlanView(drafts: $browserDrafts)
     case .settings:
       SettingsView {
         selection = lastPrimarySelection

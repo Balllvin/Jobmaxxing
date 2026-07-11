@@ -103,7 +103,7 @@ struct ChatMessageRow: View {
           Button(expandedLongText ? "Show less" : "Show full message") {
             expandedLongText.toggle()
           }
-          .buttonStyle(.plain)
+          .buttonStyle(LiquidPressButtonStyle())
           .font(.caption.weight(.semibold))
           .foregroundStyle(.secondary)
           .help(expandedLongText ? "Collapse message" : "Show full message")
@@ -113,7 +113,7 @@ struct ChatMessageRow: View {
           Button(expandedHiddenDetails ? "Hide verification details" : "Show verification details") {
             expandedHiddenDetails.toggle()
           }
-          .buttonStyle(.plain)
+          .buttonStyle(LiquidPressButtonStyle())
           .font(.caption.weight(.semibold))
           .foregroundStyle(.secondary)
           .help(expandedHiddenDetails ? "Hide verification details" : "Show verification details")
@@ -134,15 +134,17 @@ struct ChatMessageRow: View {
           HStack(spacing: 8) {
             Button(action: onReply) {
               Image(systemName: "arrowshape.turn.up.left")
+                .frame(width: 44, height: 44)
             }
-            .buttonStyle(.plain)
+            .buttonStyle(LiquidPressButtonStyle())
             .accessibilityLabel("Reply")
             .help("Reply")
 
             Button(action: onCopy) {
               Image(systemName: isUser && message.commandID != nil ? "terminal" : "doc.on.doc")
+                .frame(width: 44, height: 44)
             }
-            .buttonStyle(.plain)
+            .buttonStyle(LiquidPressButtonStyle())
             .accessibilityLabel(copyButtonLabel)
             .help(copyButtonLabel)
           }
@@ -416,7 +418,7 @@ private struct CompactTraceDisclosure: View {
         .frame(maxWidth: .infinity, minHeight: 24, alignment: .leading)
         .contentShape(Rectangle())
       }
-      .buttonStyle(.plain)
+      .buttonStyle(LiquidPressButtonStyle())
       .help(expanded ? "Hide details" : "Show details")
 
       if expanded {
@@ -488,8 +490,9 @@ struct AttachmentChip: View {
       Button(action: onRemove) {
         Image(systemName: "xmark")
           .font(.caption2.weight(.bold))
+          .frame(width: 44, height: 44)
       }
-      .buttonStyle(.plain)
+      .buttonStyle(LiquidPressButtonStyle())
       .accessibilityLabel("Remove attachment")
       .help("Remove attachment")
     }

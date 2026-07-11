@@ -111,6 +111,9 @@ struct JobmaxxingState: Codable {
   var documents: [CandidateDocument]
   var documentIndexStatus: DocumentIndexStatus?
   var events: [ActivityEvent]
+  /// Retained for lossless round-tripping after the standalone Command surface was removed.
+  /// Do not expose this as a new workflow; existing private history must survive saves.
+  var commandRuns: [CommandRun]? = nil
   var modelRoutes: [ModelRoute]
   var modelInventories: [ModelInventory]? = nil
   var hermes: HermesSettings?
@@ -135,6 +138,16 @@ struct JobmaxxingGoal: Identifiable, Codable, Hashable {
   var status: String
   var successCriteria: [String]
   var nextSteps: [String]
+}
+
+struct CommandRun: Identifiable, Codable, Hashable {
+  var id: String
+  var command: String
+  var actor: String
+  var modelRouteID: String
+  var result: String
+  var toolHints: [String]
+  var safety: [String]
 }
 
 struct CandidateProfile: Codable {
@@ -350,7 +363,7 @@ struct PersonCommunicationProfile: Codable, Hashable {
   var appWideRules: [String] = []
 }
 
-struct WhatsAppThreadCandidate: Identifiable, Codable, Hashable {
+struct WhatsAppThreadCandidate: Identifiable, Codable, Hashable, Sendable {
   var id: String
   var chatSessionID: Int64
   var displayName: String
@@ -360,17 +373,17 @@ struct WhatsAppThreadCandidate: Identifiable, Codable, Hashable {
   var databasePath: String
 }
 
-struct WhatsAppThreadSearchResult: Hashable {
+struct WhatsAppThreadSearchResult: Hashable, Sendable {
   var status: String
   var candidates: [WhatsAppThreadCandidate]
 }
 
-struct WhatsAppContactSaveResult: Hashable {
+struct WhatsAppContactSaveResult: Hashable, Sendable {
   var status: String
   var contactID: String?
 }
 
-struct WhatsAppThreadProfile: Codable, Hashable {
+struct WhatsAppThreadProfile: Codable, Hashable, Sendable {
   var threadID: String
   var chatSessionID: Int64
   var displayName: String
@@ -391,7 +404,7 @@ struct WhatsAppThreadProfile: Codable, Hashable {
   var messages: [WhatsAppThreadMessage]? = nil
 }
 
-struct WhatsAppThreadMessage: Identifiable, Codable, Hashable {
+struct WhatsAppThreadMessage: Identifiable, Codable, Hashable, Sendable {
   var id: String
   var isFromMe: Bool
   var text: String
@@ -440,7 +453,7 @@ struct ApplicationClaimTrace: Identifiable, Codable, Hashable {
   var location: String
 }
 
-struct CandidateDocument: Identifiable, Codable, Hashable {
+struct CandidateDocument: Identifiable, Codable, Hashable, Sendable {
   var id: String
   var title: String
   var fileName: String

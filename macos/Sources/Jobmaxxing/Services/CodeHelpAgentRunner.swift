@@ -67,7 +67,7 @@ enum CodeHelpAgentRunner {
     do {
       let answer = try await callMediumRoute(
         route: request.route,
-        prompt: prompt(for: request, search: search)
+        prompt: prompt(for: request, repoRootPath: repoRoot.path, search: search)
       )
       return CodeHelpAgentResult(
         text: answer.trimmed.isEmpty ? "The Medium route returned an empty answer." : answer,
@@ -89,7 +89,7 @@ enum CodeHelpAgentRunner {
     }
   }
 
-  static func prompt(for request: CodeHelpAgentRequest, search: CodeHelpSearchResult) -> String {
+  static func prompt(for request: CodeHelpAgentRequest, repoRootPath: String, search: CodeHelpSearchResult) -> String {
     var parts = [
       """
       You are Code Help inside Jobmaxxing Settings.
@@ -99,6 +99,7 @@ enum CodeHelpAgentRunner {
       Cite local file paths or symbols when they matter.
       If the search results do not contain enough evidence, say what is missing and stop.
       Model route: \(request.route.label), \(request.route.provider), \(request.route.model), reasoning \(request.route.reasoningEffort ?? "default").
+      Repository: \(repoRootPath)
       """
     ]
     if let reply = request.replyContext {
@@ -146,11 +147,8 @@ enum CodeHelpAgentRunner {
       "--glob", "!node_modules",
       "--glob", "!dist",
       "--glob", "!macos/dist",
-      "--glob", "!macos/.build",
       "--glob", "!data",
       "--glob", "!output",
-      "--glob", "!coverage",
-      "--glob", "!.env*",
       "--glob", "!package-lock.json",
       pattern,
       repoRoot.path

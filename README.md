@@ -15,22 +15,6 @@ It gives humans and coding agents one place to:
 - plan browser work with consent gates
 - expose the same job-search workflows to Codex-compatible clients, Cursor, OpenCode, and Hermes through MCP or CLI
 
-## Public Repository Contract
-
-This repository is the clean public source for the app. It should contain product code, tests, docs, synthetic fixtures, and setup instructions only.
-
-Do not commit user data, company scans, project notes, resumes, cover letters, screenshots of private state, generated application packs, credentials, local logs, dependency folders, build products, absolute local paths, or Git history copied from a private working checkout.
-
-Before every commit or pull request:
-
-```bash
-npm run clean:check
-```
-
-Then inspect the full diff. Pull requests must be made from a clean checkout or branch and must state that the clean-repo check passed. Privacy takes priority over convenience: if a change cannot be separated from user data, clean it before opening the PR.
-
-The app stores user state outside the repository at runtime. Feature updates should add or migrate behavior without overwriting existing user data.
-
 ## Native macOS App
 
 Bootstrap a fresh clone:
@@ -67,17 +51,11 @@ scripts/install_codex_mcp.sh
 
 The installer is idempotent and adds `[mcp_servers.jobmaxxing]` to `~/.codex/config.toml` if it is missing.
 
-## Web/API Setup
+## Companion tools
 
 ```bash
 npm install
-npm run dev
 ```
-
-The app runs at:
-
-- Web UI: `http://127.0.0.1:5174`
-- API: `http://127.0.0.1:4174`
 
 Useful commands:
 
@@ -94,11 +72,13 @@ npm run mcp
 
 ## Data
 
-The web/API local store is `data/jobmaxxing.json`. Override it when testing:
+The companion API local store is `data/jobmaxxing.json`. Override it when testing:
 
 ```bash
 JOBMAXXING_DATA_PATH=/tmp/jobmaxxing.json npm run api
 ```
+
+The browser UI is intentionally a separate desktop project at `an adjacent local web project`. It is not part of this native app repository and must never be copied into the clean public checkout.
 
 Secrets do not belong in the store. The native settings page exposes three editable model tiers:
 
@@ -106,7 +86,7 @@ Secrets do not belong in the store. The native settings page exposes three edita
 - Medium: OpenAI `gpt-5.5`, reasoning medium
 - High: OpenAI `gpt-5.5`, reasoning high
 
-The provider catalog stays small: OpenAI, Grok (xAI), OpenCode Go, and Cursor. Provider menus only allow enabled, connected providers. The Light route uses OpenCode's `low`, `medium`, `high`, and `max` DeepSeek reasoning choices. The OpenAI routes use `none`, `minimal`, `low`, `medium`, `high`, and `xhigh` when the selected model supports them. Grok connects through `XAI_API_KEY`, Hermes xAI OAuth (`hermes model`), or Grok Build login (`grok login` / `~/.grok/auth.json`). Cursor stays unavailable until Cursor Agent is authenticated and returns account models.
+The provider catalog includes OpenAI, Grok (xAI), OpenCode Go, OpenCode Zen, and Cursor. Provider menus only allow enabled, connected providers. Refresh in Models loads every model available to the configured OpenAI, xAI, Go, or Zen account; the app retains discovered model IDs instead of replacing them with a static fallback. Go and Zen are configured independently in OpenCode with `/connect`. Grok connects through `XAI_API_KEY`, Hermes xAI OAuth (`hermes model`), or Grok Build login (`grok login` / `~/.grok/auth.json`). Cursor stays unavailable until Cursor Agent is authenticated and returns account models.
 
 ## MCP
 
@@ -124,7 +104,7 @@ Example client config:
     "jobmaxxing": {
       "command": "npm",
       "args": ["run", "mcp"],
-      "cwd": "~/Jobmaxxing"
+      "cwd": "<repository-root>"
     }
   }
 }

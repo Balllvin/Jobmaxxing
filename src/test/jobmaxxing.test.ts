@@ -119,23 +119,23 @@ describe("jobmaxxing core", () => {
     const driftedJob = {
       ...savedJob,
       id: "job-language-drift",
-      company: "Example Manufacturing",
+      company: "V-ZUG",
       role: "Intern Applied AI &amp; AI-Platform",
       keywords: ["AIML", "agent-based workflows"],
       documents: {
         ...rawPack,
         resumeHeadline: "Intern Applied AI &amp; AI-Platform candidate",
         recruiterMessage: "Hi, I found the Data / ML / AI Intern role.",
-        followUpMessage: "Following up on Daten trifft auf Systeme: Trainee-Programm, 80-100%.",
-        coverLetter: "Sehr geehrte Frau Beispiel,\n\nIch bewerbe mich für das Trainee-Programm Daten trifft auf Systeme."
+        followUpMessage: "Following up on Finance trifft auf Engineering: Trainee-Programm beim VZ, 80-100%.",
+        coverLetter: "Sehr geehrte Frau Malcolm,\n\nIch bewerbe mich für das Trainee-Programm Finance trifft auf Engineering."
       }
     };
     const driftedContact = {
-      id: "riley-live",
-      name: "Riley",
+      id: "example-contact-live",
+      name: "Example Contact",
       role: "Supply Chain internship contact",
       jobDescription: "",
-      linkedInUrl: "https://www.linkedin.com/in/riley-rivera-example",
+      linkedInUrl: "https://example.com/profiles/example-contact",
       phone: "",
       email: "",
       location: "",
@@ -147,9 +147,9 @@ describe("jobmaxxing core", () => {
       projectNotes: "",
       companyLinks: [
         {
-          id: "riley-example-devices",
-          companyId: "example-devices",
-          companyName: "Example Devices",
+          id: "example-contact-exampleco",
+          companyId: "exampleco",
+          companyName: "ExampleCo",
           role: "Supply Chain internship contact",
           relationship: "Hiring contact",
           notes: "",
@@ -158,8 +158,8 @@ describe("jobmaxxing core", () => {
       ],
       research: {
         status: "Enhanced",
-        summary: "LinkedIn public search identifies him as Riley Rivera.",
-        publicFacts: ["LinkedIn public search identifies him as Riley Rivera."],
+        summary: "LinkedIn public search identifies him as Example Contact.",
+        publicFacts: ["LinkedIn public search identifies him as Example Contact."],
         sourceUrls: [],
         openQuestions: [],
         proposedAdditions: []
@@ -175,14 +175,14 @@ describe("jobmaxxing core", () => {
             strengths: [
               {
                 id: "fact-contract",
-                label: "ExampleOps / ExampleData data tooling contract",
-                proof: "Contracted as working student at ExampleData AG / ExampleOps AG to support reporting.",
-                tags: ["working student"]
+                label: "OPEKTUM / PEKTOPROP data tooling contract",
+                proof: "Contracted as Werkstudent at PEKTOPROP AG / OPEKTUM AG to support reporting.",
+                tags: ["Werkstudent"]
               }
             ],
             promptMemory: [
-              "ExampleOps / ExampleData can be claimed as contracted working student work.",
-              "Apple Mail contract evidence: Local Candidate Vertrag.pdf"
+              "OPEKTUM / PEKTOPROP can be claimed as contracted Werkstudent work.",
+              "Apple Mail contract evidence: Example User Vertrag.pdf"
             ]
           },
           contacts: [driftedContact]
@@ -198,12 +198,12 @@ describe("jobmaxxing core", () => {
       expect(job.keywords).toContain("AI and ML");
       expect(job.documents?.resumeHeadline).toBe("Applied AI and AI Platform Intern candidate");
       expect(job.documents?.recruiterMessage).toContain("Data, ML, and AI Intern");
-      expect(job.documents?.followUpMessage).toContain("Data and Systems Trainee Program, 80-100%");
-      expect(job.documents?.coverLetter).toContain("Sehr geehrte Frau Beispiel");
-      expect(normalized.contacts?.[0].name).toBe("Riley");
-      expect(normalized.profile.strengths[0].proof).toContain("source role title: working student");
-      expect(normalized.profile.strengths[0].tags).toContain("working student");
-      expect(normalized.profile.promptMemory.join(" ")).toContain("original German filename: Local Candidate Vertrag.pdf");
+      expect(job.documents?.followUpMessage).toContain("Finance and Engineering Trainee Program at VZ, 80-100%");
+      expect(job.documents?.coverLetter).toContain("Sehr geehrte Frau Malcolm");
+      expect(normalized.contacts?.[0].name).toBe("Example Contact");
+      expect(normalized.profile.strengths[0].proof).toContain("source role title: Werkstudent");
+      expect(normalized.profile.strengths[0].tags).toContain("Working Student");
+      expect(normalized.profile.promptMemory.join(" ")).toContain("original German filename: Example User Vertrag.pdf");
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
@@ -928,18 +928,10 @@ describe("jobmaxxing core", () => {
       description: `Build agents, documents, contacts, and application flows ${index}.`
     }));
     const companies = Array.from({ length: 160 }, (_, index) => ({
+      ...defaultStore.companies[0],
       id: `large-company-${index}`,
       name: `Large Company ${index}`,
-      website: `https://large-${index}.example.com`,
-      linkedInUrl: "",
-      category: "Target company",
-      size: "Unknown",
-      headquarters: "Unknown",
-      publicStatus: "Unknown",
-      summary: `Large company ${index} summary.`,
-      relationship: "Application target",
       applicationIds: [],
-      submittedMaterials: [],
       people: Array.from({ length: 3 }, (_, personIndex) => ({
         id: `large-person-${index}-${personIndex}`,
         name: `Person ${index}-${personIndex}`,
@@ -947,22 +939,7 @@ describe("jobmaxxing core", () => {
         sourceUrl: `https://example.com/people/${index}-${personIndex}`,
         relationship: "Potential hiring context",
         notes: "Imported from company profile."
-      })),
-      research: {
-        status: "Not researched",
-        confidence: 0,
-        websitePages: [],
-        products: [],
-        businessModel: "",
-        leadership: [],
-        hiringSignals: [],
-        risks: [],
-        openQuestions: [],
-        sourceUrls: [],
-        agentPlan: []
-      },
-      nextActions: [],
-      notes: ""
+      }))
     }));
 
     try {

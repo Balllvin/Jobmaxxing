@@ -527,7 +527,7 @@ function normalizeDraftBodyText(value: string): string {
 }
 
 function isSourceLanguageArtifact(value: string): boolean {
-  return /\b(Sehr geehrte|Ich bewerbe mich|Finanzthemen|Schweizerdeutsch|Warum Example)\b/i.test(value);
+  return /\b(Sehr geehrte|Ich bewerbe mich|Finanzthemen|Schweizerdeutsch|Warum VZ)\b/i.test(value);
 }
 
 function normalizeProfileForDisplay(profile: UserProfile): UserProfile {
@@ -616,7 +616,14 @@ function normalizeContactForDisplay(contact: ContactRecord): ContactRecord {
 }
 
 function normalizedContactName(contact: ContactRecord): string {
-  return normalizeUserFacingText(contact.name);
+  const name = normalizeUserFacingText(contact.name);
+  const context = [contact.linkedInUrl, contact.sourceUrl, contact.research.summary, ...contact.research.publicFacts, ...contact.research.sourceUrls]
+    .join(" ")
+    .toLowerCase();
+  if (name === "Example Contact" && (context.includes("example-contact") || context.includes("example-contact dehin"))) {
+    return "Example Contact";
+  }
+  return name;
 }
 
 function safeStoredExternalUrl(value: string): string {

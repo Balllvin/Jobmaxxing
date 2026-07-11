@@ -1,5 +1,4 @@
 import Foundation
-import PDFKit
 import SwiftUI
 
 struct JobmaxxingStorageAlert: Identifiable, Hashable {
@@ -27,10 +26,52 @@ func connectorAvailabilitySummary(for connectors: [IntegrationConnector]) -> Str
   return "Ready: \(ready). Set up: \(setup). Off: \(off)."
 }
 
+func canonicalCredentialReference(from hint: String) -> String? {
+  guard let candidate = hint.trimmed.split(whereSeparator: { $0.isWhitespace }).first.map(String.init),
+        credentialReferenceHasValidSyntax(candidate) else {
+    return nil
+  }
+  return candidate
+}
+
+func isValidCredentialReference(
+  _ value: String,
+  expectedReference: String? = nil,
+  environment: [String: String] = ProcessInfo.processInfo.environment
+) -> Bool {
+  let reference = value.trimmed
+  guard !reference.isEmpty else { return true }
+  guard credentialReferenceHasValidSyntax(reference) else { return false }
+  if reference == expectedReference?.trimmed { return true }
+  return !(environment[reference] ?? "").trimmed.isEmpty
+}
+
+private func credentialReferenceHasValidSyntax(_ reference: String) -> Bool {
+  let bytes = Array(reference.utf8)
+  guard !bytes.isEmpty, bytes.count <= 128 else { return false }
+  guard bytes[0] == 95 || (65...90).contains(bytes[0]) else { return false }
+  return bytes.dropFirst().allSatisfy { byte in
+    byte == 95 || (65...90).contains(byte) || (48...57).contains(byte)
+  }
+}
+
 private struct StoreLoadResult {
   var state: JobmaxxingState
   var alert: JobmaxxingStorageAlert?
   var shouldPersistMigrations: Bool
+}
+
+struct DocumentImportOutcome {
+  let importedDocuments: [CandidateDocument]
+  let failures: [String]
+
+  var summary: String {
+    let importedCount = importedDocuments.count
+    let outcome = importedCount == 0
+      ? "No files were imported."
+      : "Imported \(importedCount) file\(importedCount == 1 ? "" : "s")."
+    return failures.isEmpty ? outcome : "\(outcome) \(failures.joined(separator: " "))"
+  }
 }
 
 @MainActor
@@ -40,9 +81,6 @@ final class JobmaxxingStore: ObservableObject {
   private static let weaselWords = ["might", "could", "should", "various", "several", "very", "really", "significant"]
   private static let unsupportedClaimPhrases = ["strong fit", "great fit", "perfect fit", "relevant experience", "proven track record", "uniquely qualified", "deep experience", "extensive experience", "i can help", "i would bring", "i have shipped", "i have built"]
   private static let stopWords: Set<String> = ["about", "after", "also", "and", "are", "but", "for", "from", "have", "into", "our", "that", "the", "their", "this", "with", "will", "you", "your"]
-  private static let maxImportedTextBytes = 500_000
-  private static let maxImportedPDFPages = 25
-  private static let maxExtractedTextCharacters = 200_000
   private static let maxHermesTranscriptMessages = 160
 
   @Published private(set) var state: JobmaxxingState
@@ -72,6 +110,13 @@ final class JobmaxxingStore: ObservableObject {
     selectedDocumentID = state.documents.first?.id
     selectedCompanyID = companyProfiles.first?.id
     selectedHermesThreadID = hermesChatState.selectedThreadID
+
+    Task { @MainActor [weak self] in
+      // Cursor authentication can require launching its CLI. Let the app paint first,
+      // then run the bounded probe off the main actor.
+      await Task.yield()
+      _ = await self?.refreshIntegrationConnector(id: "cursor")
+    }
   }
 
   func clearStorageAlert() {
@@ -155,13 +200,19 @@ final class JobmaxxingStore: ObservableObject {
   }
 
   func modelKeyReference(for provider: ModelProviderChoice) -> String {
-    let configured = integrationConnectors
+    guard let field = integrationConnectors
       .first(where: { $0.id == provider.id })?
       .configFields?
-      .first(where: { $0.id == "api-key-ref" })?
-      .value
-      .trimmed ?? ""
-    return configured.isEmpty ? provider.keyReference : configured
+      .first(where: { $0.id == "api-key-ref" }) else {
+      return canonicalCredentialReference(from: provider.keyReference) ?? ""
+    }
+    let expected = canonicalCredentialReference(from: field.placeholder)
+    let configured = field.value.trimmed
+    if !configured.isEmpty,
+       isValidCredentialReference(configured, expectedReference: expected) {
+      return configured
+    }
+    return expected ?? ""
   }
 
   func refreshModelInventory(for provider: ModelProviderChoice) async {
@@ -335,6 +386,10 @@ final class JobmaxxingStore: ObservableObject {
       attachments: []
     )
     let result = await HermesHighAgentRunner.respond(to: request)
+    if result.traces.contains(where: { $0.status.trimmed.lowercased() == "failed" }) {
+      let message = result.text.trimmed.isEmpty ? "Rewrite failed." : result.text.trimmed
+      return message.hasPrefix("ERROR:") ? message : "ERROR: \(message)"
+    }
     let cleaned = TextImproveSupport.cleanOutput(result.text)
     if cleaned.isEmpty {
       return "ERROR: Rewrite returned empty text."
@@ -405,35 +460,24 @@ final class JobmaxxingStore: ObservableObject {
     persist()
   }
 
-  func importDocuments(from urls: [URL]) throws {
-    let docsURL = try Self.documentsURL()
-    try fileManager.createDirectory(at: docsURL, withIntermediateDirectories: true)
+  func importDocuments(from urls: [URL]) async throws -> DocumentImportOutcome {
+    let batch = try await Task.detached(priority: .userInitiated) {
+      try DocumentImportPipeline.prepare(urls: urls)
+    }.value
 
-    for originalURL in urls {
-      let didAccess = originalURL.startAccessingSecurityScopedResource()
-      defer {
-        if didAccess { originalURL.stopAccessingSecurityScopedResource() }
-      }
-
-      let fileName = originalURL.lastPathComponent
-      let destination = uniqueDestination(in: docsURL, fileName: fileName)
-      try fileManager.copyItem(at: originalURL, to: destination)
-      let text = extractText(from: destination)
-      let document = CandidateDocument(
-        id: UUID().uuidString,
-        title: originalURL.deletingPathExtension().lastPathComponent,
-        fileName: fileName,
-        filePath: destination.path,
-        kind: destination.pathExtension.isEmpty ? "file" : destination.pathExtension.lowercased(),
-        summary: summarize(text: text, fallback: fileName),
-        extractedText: text,
-        linkedEvidenceIDs: []
-      )
-      state.documents.insert(document, at: 0)
-      selectedDocumentID = document.id
-      indexDocument(document)
+    for item in batch.documents {
+      state.documents.insert(item.document, at: 0)
+      selectedDocumentID = item.document.id
     }
-    persist()
+    state.documentIndexStatus = batch.documents.first(where: { !$0.indexStatus.succeeded })?.indexStatus
+      ?? batch.documents.last?.indexStatus
+    if !batch.documents.isEmpty {
+      persist()
+    }
+    return DocumentImportOutcome(
+      importedDocuments: batch.documents.map(\.document),
+      failures: batch.failures
+    )
   }
 
   func promoteDocumentToEvidence(documentID: String, title: String, tags: String) {
@@ -498,16 +542,19 @@ final class JobmaxxingStore: ObservableObject {
 
     let score = max(0, 100 - flags.count * 10 - unsupportedClaims.count * 8)
     let ready = score >= 85 && unsupportedClaims.isEmpty && !evidenceReferences.isEmpty
+    let defaultRules = [
+      "Name the thing built.",
+      "Reference saved evidence or attach file-backed proof.",
+      "Use subject-verb-object sentences.",
+      "Replace praise with evidence."
+    ]
+    let auditRules = rewriteRules.isEmpty ? defaultRules : Array(Set(rewriteRules)).sorted()
+    let rememberedRules = state.promptMemory.prefix(10).map { "Saved rule: \($0)" }
     return WritingAuditResult(
       score: score,
       ready: ready,
       flags: flags.isEmpty ? ["Ready: concise, direct, and evidence-backed."] : flags,
-      rewriteRules: rewriteRules.isEmpty ? [
-        "Name the thing built.",
-        "Reference saved evidence or attach file-backed proof.",
-        "Use subject-verb-object sentences.",
-        "Replace praise with evidence."
-      ] : Array(Set(rewriteRules)).sorted(),
+      rewriteRules: (auditRules + rememberedRules).uniqued,
       unsupportedClaims: unsupportedClaims,
       evidenceReferences: evidenceReferences
     )
@@ -573,6 +620,21 @@ final class JobmaxxingStore: ObservableObject {
     }
     connectors[index].isConnected = Self.detectConnection(for: connectors[index])
     state.integrationConnectors = connectors
+  }
+
+  private func syncLegacyTelegramSettings(connectorID: String, fieldID: String, value: String) {
+    guard connectorID == "telegram", var chat = state.hermesChat else { return }
+    switch fieldID {
+    case "bot-token-ref":
+      chat.settings.telegramBotTokenReference = value.trimmed
+    case "chat-id":
+      chat.settings.telegramChatID = value.trimmed
+    case "webhook-url":
+      chat.settings.webhookURL = value.trimmed
+    default:
+      return
+    }
+    state.hermesChat = chat
   }
 
   private func connectorAvailabilityText() -> String {
@@ -947,8 +1009,10 @@ final class JobmaxxingStore: ObservableObject {
       return "Local Documents"
     case "openai":
       return "OpenAI"
-    case "opencode":
-      return "OpenCode"
+    case "opencode-go":
+      return "OpenCode Go"
+    case "opencode-zen":
+      return "OpenCode Zen"
     case "cursor":
       return "Cursor"
     default:
@@ -1049,9 +1113,6 @@ final class JobmaxxingStore: ObservableObject {
     if let envValue = ProcessInfo.processInfo.environment[ref], !envValue.trimmed.isEmpty {
       return envValue.trimmed
     }
-    if ref.contains(":") {
-      return ref
-    }
     return nil
   }
 
@@ -1081,10 +1142,18 @@ final class JobmaxxingStore: ObservableObject {
     persist()
   }
 
-  func updateModelRoute(_ route: ModelRoute) {
-    guard let index = state.modelRoutes.firstIndex(where: { $0.id == route.id }) else { return }
+  @discardableResult
+  func updateModelRoute(_ route: ModelRoute) -> Bool {
+    guard let index = state.modelRoutes.firstIndex(where: { $0.id == route.id }) else { return false }
+    let provider = ModelCatalog.provider(for: route)
+    let expectedReference = modelKeyReference(for: provider)
+    guard isValidCredentialReference(route.keyReference, expectedReference: expectedReference) else {
+      recordCredentialReferenceError(connectorID: provider.id)
+      return false
+    }
     state.modelRoutes[index] = normalizedModelRoute(route)
     persist()
+    return true
   }
 
   func updateHermesSettings(_ settings: HermesSettings) {
@@ -1103,7 +1172,7 @@ final class JobmaxxingStore: ObservableObject {
   }
 
   @discardableResult
-  func refreshIntegrationConnector(id: String) -> ConnectorCheckResult {
+  func refreshIntegrationConnector(id: String) async -> ConnectorCheckResult {
     var connectors = integrationConnectors
     guard let index = connectors.firstIndex(where: { $0.id == id }) else {
       let missing = ConnectorCheckResult(
@@ -1117,7 +1186,7 @@ final class JobmaxxingStore: ObservableObject {
       return missing
     }
     var connector = connectors[index]
-    let detected = Self.detectConnection(for: connector)
+    let detected = await Self.detectConnectionIncludingProcessProbe(for: connector)
     connector.isConnected = detected
     connectors[index] = connector
     applyIntegrationConnectors(connectors)
@@ -1126,12 +1195,12 @@ final class JobmaxxingStore: ObservableObject {
     return result
   }
 
-  func refreshAllIntegrationConnectors() {
+  func refreshAllIntegrationConnectors() async {
     var connectors = integrationConnectors
     var results: [String: ConnectorCheckResult] = connectorCheckResults
     let checkedAt = Date()
     for index in connectors.indices {
-      let detected = Self.detectConnection(for: connectors[index])
+      let detected = await Self.detectConnectionIncludingProcessProbe(for: connectors[index])
       connectors[index].isConnected = detected
       let result = Self.makeConnectorCheckResult(for: connectors[index], isConnected: detected, checkedAt: checkedAt)
       results[result.connectorID] = result
@@ -1140,26 +1209,35 @@ final class JobmaxxingStore: ObservableObject {
     connectorCheckResults = results
   }
 
-  func updateConnectorConfig(connectorID: String, fieldID: String, value: String) {
+  @discardableResult
+  func updateConnectorConfig(connectorID: String, fieldID: String, value: String) -> Bool {
     var connectors = integrationConnectors
-    guard let index = connectors.firstIndex(where: { $0.id == connectorID }) else { return }
+    guard let index = connectors.firstIndex(where: { $0.id == connectorID }) else { return false }
     var fields = connectors[index].configFields ?? []
-    guard let fieldIndex = fields.firstIndex(where: { $0.id == fieldID }) else { return }
+    guard let fieldIndex = fields.firstIndex(where: { $0.id == fieldID }) else { return false }
+    let isSensitiveField = fields[fieldIndex].isSecret
+      || fields[fieldIndex].id.contains("token")
+      || fields[fieldIndex].id.contains("key")
+    let expectedReference = canonicalCredentialReference(from: fields[fieldIndex].placeholder)
+    if isSensitiveField,
+       !isValidCredentialReference(value, expectedReference: expectedReference) {
+      recordCredentialReferenceError(connectorID: connectorID, expectedReference: expectedReference)
+      return false
+    }
     fields[fieldIndex].value = value
     connectors[index].configFields = fields
     let detected = Self.detectConnection(for: connectors[index])
     connectors[index].isConnected = detected
+    syncLegacyTelegramSettings(connectorID: connectorID, fieldID: fieldID, value: value)
     applyIntegrationConnectors(connectors)
     recordConnectorCheck(Self.makeConnectorCheckResult(for: connectors[index], isConnected: detected))
+    return true
   }
 
   func setConnectorHidden(id: String, isHidden: Bool) {
     var connectors = integrationConnectors
     guard let index = connectors.firstIndex(where: { $0.id == id }) else { return }
     connectors[index].isHidden = isHidden
-    if isHidden {
-      connectors[index].isEnabled = false
-    }
     applyIntegrationConnectors(connectors)
   }
 
@@ -1175,16 +1253,43 @@ final class JobmaxxingStore: ObservableObject {
       }
       return next
     }
+    var nextState = state
+    for routeIndex in nextState.modelRoutes.indices
+      where ModelCatalog.provider(for: nextState.modelRoutes[routeIndex]).id == id {
+      nextState.modelRoutes[routeIndex].keyReference = ""
+    }
+    if id == "telegram", var chat = nextState.hermesChat {
+      chat.settings.telegramBotTokenReference = ""
+      nextState.hermesChat = chat
+    }
+    state = nextState
     applyIntegrationConnectors(connectors)
     recordConnectorCheck(
       ConnectorCheckResult(
         connectorID: id,
         isConnected: false,
         summary: "Turned off",
-        detail: "Credentials cleared where stored, and Jobmaxxing will not use this connector until you activate it again.",
+        detail: "All locally saved credential references were cleared, and Jobmaxxing will not use this connector until you activate it again.",
         checkedAt: Date()
       )
     )
+  }
+
+  func hasSavedCredentialReference(for connectorID: String) -> Bool {
+    if let connector = integrationConnectors.first(where: { $0.id == connectorID }),
+       (connector.configFields ?? []).contains(where: { field in
+         let sensitive = field.isSecret || field.id.contains("token") || field.id.contains("key")
+         return sensitive && !field.value.trimmed.isEmpty
+       }) {
+      return true
+    }
+    if state.modelRoutes.contains(where: { route in
+      ModelCatalog.provider(for: route).id == connectorID && !route.keyReference.trimmed.isEmpty
+    }) {
+      return true
+    }
+    return connectorID == "telegram"
+      && !(state.hermesChat?.settings.telegramBotTokenReference.trimmed ?? "").isEmpty
   }
 
   func lastConnectorCheck(for id: String) -> ConnectorCheckResult? {
@@ -1196,6 +1301,16 @@ final class JobmaxxingStore: ObservableObject {
     next.integrationConnectors = connectors
     for index in next.modelRoutes.indices {
       let provider = ModelCatalog.provider(for: next.modelRoutes[index])
+      let keyField = connectors
+        .first(where: { $0.id == provider.id })?
+        .configFields?
+        .first(where: { $0.id == "api-key-ref" })
+      let configuredKeyReference = keyField?.value.trimmed ?? ""
+      let expectedReference = keyField.flatMap { canonicalCredentialReference(from: $0.placeholder) }
+      if !configuredKeyReference.isEmpty,
+         isValidCredentialReference(configuredKeyReference, expectedReference: expectedReference) {
+        next.modelRoutes[index].keyReference = configuredKeyReference
+      }
       let isConnected = connectors.first(where: { $0.id == provider.id }).map { $0.isEnabled && $0.isConnected } ?? false
       next.modelRoutes[index].isConnected = isConnected
     }
@@ -1208,6 +1323,19 @@ final class JobmaxxingStore: ObservableObject {
     var next = connectorCheckResults
     next[result.connectorID] = result
     connectorCheckResults = next
+  }
+
+  private func recordCredentialReferenceError(connectorID: String, expectedReference: String? = nil) {
+    let expected = expectedReference.map { " Use \($0), or another variable already available to this app." } ?? ""
+    recordConnectorCheck(
+      ConnectorCheckResult(
+        connectorID: connectorID,
+        isConnected: false,
+        summary: "Use an environment variable reference",
+        detail: "Raw tokens and API keys are not stored in Jobmaxxing state.\(expected)",
+        checkedAt: Date()
+      )
+    )
   }
 
   private static func makeConnectorCheckResult(
@@ -1248,8 +1376,10 @@ final class JobmaxxingStore: ObservableObject {
       return "Set OPENAI_API_KEY in the environment that launches Jobmaxxing, then press Check setup again."
     case "xai", "grok":
       return "Set XAI_API_KEY, run hermes model with xAI Grok OAuth, or run grok login, then press Check setup again."
-    case "opencode":
-      return "Start the OpenCode Go bridge on 127.0.0.1:8787 until /health reports ok, then press Check setup again."
+    case "opencode-go":
+      return "In OpenCode, run /connect, choose OpenCode Go, and finish the sign-in or API-key flow. Then press Check setup again."
+    case "opencode-zen":
+      return "In OpenCode, run /connect, choose OpenCode Zen, and finish the sign-in or API-key flow. Then press Check setup again."
     case "cursor":
       return "Run Cursor Agent login or set CURSOR_API_KEY, confirm cursor agent models works, then press Check setup again."
     case "hermes":
@@ -1289,8 +1419,10 @@ final class JobmaxxingStore: ObservableObject {
       return "Found OPENAI_API_KEY (or the configured key reference) for Medium/High routes."
     case "xai", "grok":
       return "Found Grok auth via XAI_API_KEY, Hermes xAI credentials, or Grok Build login."
-    case "opencode":
-      return "OpenCode Go bridge answered healthy on the local endpoint."
+    case "opencode-go":
+      return "OpenCode Go is authenticated in OpenCode or through its configured API-key variable."
+    case "opencode-zen":
+      return "OpenCode Zen is authenticated in OpenCode or through its configured API-key variable."
     case "cursor":
       return "Cursor Agent auth is available and returned usable models."
     case "hermes":
@@ -1324,13 +1456,23 @@ final class JobmaxxingStore: ObservableObject {
     }
   }
 
-  func updateHermesChatSettings(_ settings: HermesChatSettings) {
+  @discardableResult
+  func updateHermesChatSettings(_ settings: HermesChatSettings) -> Bool {
+    let expectedReference = "TELEGRAM_BOT_TOKEN"
+    guard isValidCredentialReference(
+      settings.telegramBotTokenReference,
+      expectedReference: expectedReference
+    ) else {
+      recordCredentialReferenceError(connectorID: "telegram", expectedReference: expectedReference)
+      return false
+    }
     var chat = hermesChatState
     chat.settings = settings
     chat.selectedThreadID = Self.defaultHermesThreadID
     state.hermesChat = chat
     syncTelegramConnectorFromChatSettings(settings)
     persist()
+    return true
   }
 
   func selectHermesThread(id: String) {
@@ -1493,6 +1635,7 @@ final class JobmaxxingStore: ObservableObject {
     } ?? "Selected application: none"
     let goalText = state.currentGoal.map { "Goal: \($0.objective)" } ?? "Goal: none"
     let evidenceText = state.profile.evidence.prefix(8).map { "\($0.title): \($0.proof)" }.joined(separator: "\n")
+    let writingRules = state.promptMemory.prefix(10).joined(separator: "\n")
     let selectedCompanyContacts = selectedCompany.map { company in
       contacts(for: company.id)
         .prefix(10)
@@ -1511,9 +1654,9 @@ final class JobmaxxingStore: ObservableObject {
     }.joined(separator: "\n")
     let savedContactsText = contacts.prefix(16).map(Self.hermesContactContextLine).joined(separator: "\n")
     return [
-      "Output: answer the user in Markdown. Use headings, bullets, code fences, and tables when they make the response easier to scan.",
-      "State rule: before creating a company or contact, match saved records by company, person name, role, LinkedIn/source URL, phone/email, or WhatsApp JID. Update existing records instead of creating duplicates.",
-      "Research rule: if the user asks about a public company fact, tool, person, system name, or unresolved clue, search or prepare browser steps before marking it unknown. Keep facts sourced, label assumptions, and do not leave a public unknown unresolved when lookup tools are available.",
+      "Output: answer User in Markdown. Use headings, bullets, code fences, and tables when they make the response easier to scan.",
+      "State rule: before creating a company or contact, match saved records by company, person name, role, LinkedIn/source URL, phone/email, or WhatsApp JID. Update matching records instead of creating duplicates.",
+      "Research rule: if User asks about a public company fact, tool, person, system name, or unresolved clue, search or prepare browser steps before marking it unknown. Keep facts sourced, label assumptions, and do not leave a public unknown unresolved when lookup tools are available.",
       goalText,
       selectedCompanyText,
       "Selected company contacts:",
@@ -1528,6 +1671,8 @@ final class JobmaxxingStore: ObservableObject {
       savedContactsText.isEmpty ? "None saved." : savedContactsText,
       "Evidence:",
       evidenceText.isEmpty ? "None saved." : evidenceText,
+      "Saved writing rules:",
+      writingRules.isEmpty ? "None saved." : writingRules,
       "Safety: do not submit applications, send messages, edit external profiles, bypass captchas, or claim unsourced facts."
     ].joined(separator: "\n\n")
   }
@@ -1551,15 +1696,16 @@ final class JobmaxxingStore: ObservableObject {
   }
 
   func syncTelegramMessages() async -> String {
-    guard integrationConnectors.first(where: { $0.id == "telegram" })?.isEnabled == true else {
+    guard let connector = integrationConnectors.first(where: { $0.id == "telegram" }),
+          connector.isEnabled else {
       return "Enable Telegram in Settings before syncing messages."
     }
     var chat = hermesChatState
     chat = Self.normalizedSingleHermesChat(chat)
     let settings = chat.settings
-    let chatID = settings.telegramChatID.trimmed
+    let chatID = Self.configValue("chat-id", in: connector)
     guard !chatID.isEmpty else { return "Set Telegram chat ID." }
-    guard let token = Self.telegramToken(from: settings.telegramBotTokenReference) else {
+    guard let token = Self.telegramToken(from: Self.configValue("bot-token-ref", in: connector)) else {
       return "Set Telegram bot token."
     }
 
@@ -1695,11 +1841,11 @@ final class JobmaxxingStore: ObservableObject {
         id: "company-page-\(company.id)-\(index)",
         title: pageTitle(for: url, companyName: company.name),
         url: url,
-        summary: "Queued for agent reading. Paste notes or let an approved browser agent summarize this source."
+        summary: "Planned source review. Open and review this source before saving any new fact."
       )
     }
     company.research = CompanyResearch(
-      status: "Agent research packet ready",
+      status: "Research plan ready",
       confidence: pages.isEmpty ? 25 : 48,
       websitePages: pages,
       products: company.research.products.isEmpty ? ["Identify products from homepage, docs, pricing, case studies, and careers pages."] : company.research.products,
@@ -1813,7 +1959,7 @@ final class JobmaxxingStore: ObservableObject {
     title: String,
     relationship: String,
     notes: String
-  ) -> String {
+  ) async -> String {
     guard companyProfiles.contains(where: { $0.id == companyID }) else {
       return "Choose a company first."
     }
@@ -1844,7 +1990,7 @@ final class JobmaxxingStore: ObservableObject {
     ) else {
       return "Could not save \(name)."
     }
-    return importWhatsAppThread(companyID: companyID, personID: contactID, candidate: candidate)
+    return await importWhatsAppThread(companyID: companyID, personID: contactID, candidate: candidate)
   }
 
   func addWhatsAppContactMetadata(
@@ -1854,7 +2000,7 @@ final class JobmaxxingStore: ObservableObject {
     title: String,
     relationship: String,
     notes: String
-  ) -> WhatsAppContactSaveResult {
+  ) async -> WhatsAppContactSaveResult {
     guard companyProfiles.contains(where: { $0.id == companyID }) else {
       return WhatsAppContactSaveResult(status: "Choose a company first.", contactID: nil)
     }
@@ -1885,14 +2031,17 @@ final class JobmaxxingStore: ObservableObject {
     ) else {
       return WhatsAppContactSaveResult(status: "Could not save \(name).", contactID: nil)
     }
-    let status = importWhatsAppThread(companyID: companyID, personID: contactID, candidate: candidate)
+    let status = await importWhatsAppThread(companyID: companyID, personID: contactID, candidate: candidate)
     return WhatsAppContactSaveResult(status: status, contactID: contactID)
   }
 
-  func addLatestWhatsAppContactMetadata(companyID: String) -> WhatsAppContactSaveResult {
+  func addLatestWhatsAppContactMetadata(companyID: String) async -> WhatsAppContactSaveResult {
     let candidates: [WhatsAppThreadCandidate]
     do {
-      candidates = try WhatsAppLocalStore(databasePath: whatsAppDatabasePath()).searchThreads(query: "")
+      let path = whatsAppDatabasePath()
+      candidates = try await Task.detached(priority: .userInitiated) {
+        try WhatsAppLocalStore(databasePath: path).searchThreads(query: "")
+      }.value
     } catch {
       return WhatsAppContactSaveResult(status: error.localizedDescription, contactID: nil)
     }
@@ -1902,7 +2051,7 @@ final class JobmaxxingStore: ObservableObject {
     guard let candidate = candidates.first(where: { !isWhatsAppCandidateSaved($0) }) else {
       return WhatsAppContactSaveResult(status: "Latest WhatsApp senders are already saved.", contactID: nil)
     }
-    return addWhatsAppContactMetadata(
+    return await addWhatsAppContactMetadata(
       companyID: companyID,
       candidate: candidate,
       fallbackName: "",
@@ -1956,7 +2105,7 @@ final class JobmaxxingStore: ObservableObject {
 
   func sendContactAgentMessage(contactID: String, text rawText: String, modelTier: String) -> String {
     let text = rawText.trimmed
-    guard !text.isEmpty else { return "Write a task for the contact agent." }
+    guard !text.isEmpty else { return "Write a task for the local planner." }
     guard let index = contacts.firstIndex(where: { $0.id == contactID }) else {
       return "Choose a contact first."
     }
@@ -1988,20 +2137,20 @@ final class JobmaxxingStore: ObservableObject {
     nextContacts[index] = contact
     state.contacts = nextContacts
     persist()
-    return "Contact agent used \(result.modelTier) for \(contact.name)."
+    return "Prepared a local result for \(contact.name). No model or browser research ran."
   }
 
   func runContactQuickAction(contactID: String, action: String, modelTier: String) -> String {
     let prompt: String
     switch action {
     case "deep-profile":
-      prompt = "Set a goal for yourself to complete a deep public profile on this contact. Use Medium unless the task is hard, then use High. Use saved LinkedIn, public search facts, company context, and linked messages. Find role, location, education, likely work area, posts, tools, source URLs, missing email status, and next follow-up. Do not stop at missing fields; search and write what can be sourced."
+      prompt = "Prepare a local profile plan from the saved contact, company, source URLs, and linked WhatsApp context. Separate saved facts from open questions. Do not claim that a model, search, or browser ran."
     case "find-email":
-      prompt = "Set a goal for yourself to find a reliable email address for this contact. Use public sources only. If no reliable email exists, say exactly what was checked and do not fabricate one."
+      prompt = "Check whether a reliable email address is saved. If not, prepare a source-review checklist and do not guess an address or claim a search ran."
     case "draft-follow-up":
-      prompt = "Set a goal for yourself to draft a manual WhatsApp follow-up for this contact using the full conversation context. Keep it concise and ready to copy. Do not send."
+      prompt = "Draft a manual follow-up from the saved contact and conversation context. Keep it concise and ready to copy. Do not send."
     case "chrome-research":
-      prompt = "Set a goal for yourself to research this contact in the browser. Open/review the saved LinkedIn and public source targets, extract every reliable detail, and write back sourced profile facts. Use Medium model and browser tool traces."
+      prompt = "Prepare a browser research plan for the saved public profile and source targets. Do not claim any page was reviewed or any fact was found until the user reviews it."
     default:
       prompt = action
     }
@@ -2024,7 +2173,7 @@ final class JobmaxxingStore: ObservableObject {
       }
     }
     persist()
-    return enhanced == 1 ? "Enhanced 1 contact." : "Enhanced \(enhanced) contacts."
+    return enhanced == 1 ? "Prepared 1 local contact plan." : "Prepared \(enhanced) local contact plans."
   }
 
   private func enhanceContactWithoutPersist(contactID: String) -> String {
@@ -2035,14 +2184,12 @@ final class JobmaxxingStore: ObservableObject {
     var contact = nextContacts[index]
     let primaryCompany = contact.companyLinks.first
     let company = primaryCompany.flatMap { link in companyProfiles.first(where: { $0.id == link.companyID }) }
-    let sources = ([contact.linkedInURL, contact.sourceURL, primaryCompany?.sourceURL ?? ""])
+    let sources = [contact.linkedInURL, contact.sourceURL, primaryCompany?.sourceURL ?? ""]
       .map(\.trimmed)
       .filter { !$0.isEmpty }
       .uniqued
-    let enriched = Self.contactByApplyingPublicProfileFacts(contact, company: company, sources: sources)
-    let profile = enriched.research
-    contact = enriched
-    contact.research.status = "Enhanced"
+    let profile = Self.deepContactResearchProfile(contact: contact, company: company, sources: sources)
+    contact.research.status = "Local plan ready"
     contact.research.summary = profile.summary
     contact.research.publicFacts = profile.publicFacts.uniqued
     contact.research.sourceURLs = (profile.sourceURLs + contact.research.sourceURLs).uniqued
@@ -2051,7 +2198,7 @@ final class JobmaxxingStore: ObservableObject {
     nextContacts[index] = contact
     state.contacts = nextContacts
     appendAgentRuns(Self.contactAgentRuns(contact: contact, companyName: primaryCompany?.companyName ?? "No company linked"))
-    return "Enhanced \(contact.name)."
+    return "Prepared a local profile plan for \(contact.name). No model or browser research ran."
   }
 
   func enhanceCompany(companyID: String) -> String {
@@ -2063,7 +2210,7 @@ final class JobmaxxingStore: ObservableObject {
     let linkedContacts = contacts(for: companyID)
     appendAgentRuns(Self.companyAgentRuns(company: company, linkedContacts: linkedContacts))
     persist()
-    return "Enhanced \(company.name)."
+    return "Prepared a local research plan for \(company.name). No browser or model research ran."
   }
 
   private func appendAgentRuns(_ runs: [ResearchAgentRun]) {
@@ -2094,12 +2241,18 @@ final class JobmaxxingStore: ObservableObject {
     )
   }
 
-  func searchWhatsAppThreads(query: String) -> WhatsAppThreadSearchResult {
+  func searchWhatsAppThreads(query: String) async -> WhatsAppThreadSearchResult {
     let path = whatsAppDatabasePath()
     do {
-      let store = WhatsAppLocalStore(databasePath: path)
-      let counts = try store.databaseCounts()
-      let candidates = try store.searchThreads(query: query)
+      let result = try await Task.detached(priority: .userInitiated) {
+        let localStore = WhatsAppLocalStore(databasePath: path)
+        return (
+          counts: try localStore.databaseCounts(),
+          candidates: try localStore.searchThreads(query: query)
+        )
+      }.value
+      let counts = result.counts
+      let candidates = result.candidates
       let status = candidates.isEmpty
         ? "No WhatsApp thread matched. Try a name, phone fragment, or leave search blank."
         : "Searched \(counts.threads) threads and \(counts.messages) messages. Pick one thread to grant access."
@@ -2109,7 +2262,7 @@ final class JobmaxxingStore: ObservableObject {
     }
   }
 
-  func importWhatsAppThread(companyID: String, personID: String, candidate: WhatsAppThreadCandidate) -> String {
+  func importWhatsAppThread(companyID: String, personID: String, candidate: WhatsAppThreadCandidate) async -> String {
     guard let company = companyProfiles.first(where: { $0.id == companyID }) else {
       return "Choose a company first."
     }
@@ -2127,7 +2280,21 @@ final class JobmaxxingStore: ObservableObject {
       return "Select a saved person before granting WhatsApp access."
     }
     do {
-      var profile = try WhatsAppLocalStore(databasePath: candidate.databasePath).importThread(candidate)
+      var profile = try await Task.detached(priority: .userInitiated) {
+        try WhatsAppLocalStore(databasePath: candidate.databasePath).importThread(candidate)
+      }.value
+      let existingMessages = nextContacts[contactIndex].communicationProfile?.whatsApp?.messages ?? []
+      if !existingMessages.isEmpty {
+        let existingIDs = Set(existingMessages.map(\.id))
+        let existingContent = Set(existingMessages.map {
+          "\($0.isFromMe)|\($0.senderJID)|\($0.text)"
+        })
+        let additions = (profile.messages ?? []).filter { message in
+          !existingIDs.contains(message.id)
+            && !existingContent.contains("\(message.isFromMe)|\(message.senderJID)|\(message.text)")
+        }
+        profile.messages = existingMessages + additions
+      }
       nextContacts[contactIndex] = Self.contactByApplyingWhatsAppProfile(
         nextContacts[contactIndex],
         profile: profile,
@@ -2151,13 +2318,14 @@ final class JobmaxxingStore: ObservableObject {
       addWhatsAppPromptMemoryIfNeeded()
       state.contacts = nextContacts
       persist()
-      return "Imported \(profile.messageCount) readable WhatsApp messages for \(nextContacts[contactIndex].name)."
+      let retainedCount = profile.messages?.count ?? 0
+      return "Linked WhatsApp for \(nextContacts[contactIndex].name). The source reports \(profile.messageCount) messages; \(retainedCount) saved or recent readable messages are available locally."
     } catch {
       return error.localizedDescription
     }
   }
 
-  func refreshWhatsAppThread(contactID: String) -> String {
+  func refreshWhatsAppThread(contactID: String) async -> String {
     guard let contact = contacts.first(where: { $0.id == contactID }) else {
       return "Choose a contact first."
     }
@@ -2174,7 +2342,7 @@ final class JobmaxxingStore: ObservableObject {
         lastMessagePreview: profile.lastMessagePreview,
         databasePath: profile.databasePath
       )
-      return importWhatsAppThread(companyID: companyID, personID: contact.id, candidate: candidate)
+      return await importWhatsAppThread(companyID: companyID, personID: contact.id, candidate: candidate)
     }
 
     let whatsAppJID = contact.sourceURL.trimmed.lowercased().hasPrefix("whatsapp:")
@@ -2187,16 +2355,19 @@ final class JobmaxxingStore: ObservableObject {
     guard !queries.isEmpty else {
       return "Add a phone number or WhatsApp source before refreshing."
     }
-    let store = WhatsAppLocalStore(databasePath: whatsAppDatabasePath())
+    let databasePath = whatsAppDatabasePath()
     for query in queries {
       do {
-        if let candidate = try store.searchThreads(query: query, limit: 8).first(where: { candidate in
+        let candidates = try await Task.detached(priority: .userInitiated) {
+          try WhatsAppLocalStore(databasePath: databasePath).searchThreads(query: query, limit: 8)
+        }.value
+        if let candidate = candidates.first(where: { candidate in
           let candidatePhone = Self.phoneNumber(fromWhatsAppCandidate: candidate)
           return (!whatsAppJID.isEmpty && candidate.jid == whatsAppJID)
             || (!contact.phone.trimmed.isEmpty && candidatePhone == contact.phone.trimmed)
             || candidate.displayName.localizedCaseInsensitiveContains(contact.name)
         }) {
-          return importWhatsAppThread(companyID: companyID, personID: contact.id, candidate: candidate)
+          return await importWhatsAppThread(companyID: companyID, personID: contact.id, candidate: candidate)
         }
       } catch {
         return error.localizedDescription
@@ -2394,6 +2565,13 @@ final class JobmaxxingStore: ObservableObject {
       }
       if normalized != chat {
         state.hermesChat = normalized
+        changed = true
+      }
+    }
+    if let connectors = state.integrationConnectors {
+      let normalized = Self.normalizedOpenCodeConnectors(connectors)
+      if normalized != connectors {
+        state.integrationConnectors = normalized
         changed = true
       }
     }
@@ -2662,11 +2840,21 @@ final class JobmaxxingStore: ObservableObject {
   }
 
   private static func normalizedContactName(_ contact: ContactRecord) -> String {
-    normalizedUserFacingText(contact.name)
+    let name = normalizedUserFacingText(contact.name)
+    let context = ([contact.linkedInURL, contact.sourceURL, contact.research.summary] + contact.research.publicFacts + contact.research.sourceURLs)
+      .joined(separator: " ")
+      .lowercased()
+    if name == "Example Contact", context.contains("example-contact") || context.contains("example-contact dehin") {
+      return "Example Contact"
+    }
+    return name
   }
 
   private static func normalizedSourceReference(_ value: String) -> String {
-    normalizedUserFacingText(value)
+    value.replacingOccurrences(
+      of: "Apple Mail contract evidence: Example User Vertrag.pdf",
+      with: "Apple Mail contract evidence: Example User contract.pdf (original German filename: Example User Vertrag.pdf)"
+    )
   }
 
   private static func normalizedDraftBodyText(_ value: String) -> String {
@@ -2674,27 +2862,27 @@ final class JobmaxxingStore: ObservableObject {
   }
 
   private static func isSourceLanguageArtifact(_ value: String) -> Bool {
-    value.range(of: #"\b(Sehr geehrte|Ich bewerbe mich)\b"#, options: [.regularExpression, .caseInsensitive]) != nil
+    value.range(of: #"\b(Sehr geehrte|Ich bewerbe mich|Finanzthemen|Schweizerdeutsch|Warum VZ)\b"#, options: [.regularExpression, .caseInsensitive]) != nil
   }
 
   static func normalizedUserFacingText(_ value: String) -> String {
-    let protectedSourceRole = "__SOURCE_WORKING_STUDENT__"
+    let protectedWerkstudent = "__SOURCE_WERKSTUDENT__"
     var next = value
       .replacingOccurrences(of: "&amp;", with: "&")
       .replacingOccurrences(of: #"\bAIML\s*-\s*"#, with: "", options: .regularExpression)
       .replacingOccurrences(of: #"\bAIML\b"#, with: "AI and ML", options: .regularExpression)
       .replacingOccurrences(of: #"\bAI/ML\b"#, with: "AI and ML", options: .regularExpression)
       .replacingOccurrences(of: #"\bData\s*/\s*ML\s*/\s*AI Intern\b"#, with: "Data, ML, and AI Intern", options: .regularExpression)
-      .replacingOccurrences(of: #"\bData\s*/\s*ML\s*/\s*AI\b"#, with: "Data, ML, and AI", options: .regularExpression)
       .replacingOccurrences(of: #"\bIntern Applied AI\s*&\s*AI-Platform\b"#, with: "Applied AI and AI Platform Intern", options: .regularExpression)
       .replacingOccurrences(of: #"\bApplied AI\s*&\s*AI-Platform Intern\b"#, with: "Applied AI and AI Platform Intern", options: .regularExpression)
-      .replacingOccurrences(of: "Daten trifft auf Systeme: Trainee-Programm, 80-100%", with: "Data and Systems Trainee Program, 80-100%")
-      .replacingOccurrences(of: "Contracted as working student", with: "Contracted as a working student (source role title: \(protectedSourceRole))")
-      .replacingOccurrences(of: "source role title: Working Student", with: "source role title: \(protectedSourceRole)")
-      .replacingOccurrences(of: protectedSourceRole, with: "working student")
+      .replacingOccurrences(of: "Finance trifft auf Engineering: Trainee-Programm beim VZ, 80-100%", with: "Finance and Engineering Trainee Program at VZ, 80-100%")
+      .replacingOccurrences(of: "Contracted as Werkstudent", with: "Contracted as a working student (source role title: \(protectedWerkstudent))")
+      .replacingOccurrences(of: #"\bWerkstudent\b"#, with: "Working Student", options: .regularExpression)
+      .replacingOccurrences(of: "source role title: Working Student", with: "source role title: \(protectedWerkstudent)")
+      .replacingOccurrences(of: protectedWerkstudent, with: "Werkstudent")
       .replacingOccurrences(
-        of: "Apple Mail contract evidence: Local Candidate Vertrag.pdf",
-        with: "Apple Mail contract evidence: Local Candidate contract.pdf (original German filename: Local Candidate Vertrag.pdf)"
+        of: "Apple Mail contract evidence: Example User Vertrag.pdf",
+        with: "Apple Mail contract evidence: Example User contract.pdf (original German filename: Example User Vertrag.pdf)"
       )
     next = next.replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression)
     return next.trimmed
@@ -2907,6 +3095,18 @@ final class JobmaxxingStore: ObservableObject {
 
   private func applyProfileDefaults() -> Bool {
     var changed = false
+    if state.profile.name.trimmed == "User" {
+      state.profile.name = "Example User"
+      changed = true
+    }
+    if (state.profile.headline ?? "").trimmed.isEmpty {
+      state.profile.headline = "AI product engineer building agentic tools, finance research systems, and local-first automation."
+      changed = true
+    }
+    if (state.profile.about ?? "").trimmed.isEmpty {
+      state.profile.about = "Builds proof-backed AI workflows: agent control planes, finance research systems, safe browser workflows, local-first macOS apps, and review loops that make generated work inspectable."
+      changed = true
+    }
     if state.profile.experience == nil {
       state.profile.experience = Self.defaultProfileExperience
       changed = true
@@ -2986,8 +3186,10 @@ final class JobmaxxingStore: ObservableObject {
   private func normalizeLegacyModelRoutes() -> Bool {
     var changed = false
     for index in state.modelRoutes.indices {
-      if state.modelRoutes[index].provider == "OpenCode Go" {
-        state.modelRoutes[index].provider = "OpenCode"
+      if state.modelRoutes[index].provider == "OpenCode" {
+        state.modelRoutes[index].provider = "OpenCode Go"
+        state.modelRoutes[index].baseURL = "https://opencode.ai/zen/go/v1"
+        state.modelRoutes[index].keyReference = "OPENCODE_GO_API_KEY"
         changed = true
       }
     }
@@ -3014,9 +3216,6 @@ final class JobmaxxingStore: ObservableObject {
     let provider = ModelCatalog.provider(for: next)
     if provider.id == "openai", next.keyReference.localizedCaseInsensitiveContains("codex account") {
       next.keyReference = "OPENAI_API_KEY"
-    }
-    if !provider.models.contains(where: { $0.id == next.model }), let model = provider.models.first {
-      next.model = model.id
     }
     let reasoningLevels = ModelCatalog.reasoningLevels(for: next)
     if reasoningLevels.isEmpty {
@@ -3087,10 +3286,14 @@ final class JobmaxxingStore: ObservableObject {
     case "xai", "grok":
       let keyRef = configValue("api-key-ref", in: connector)
       return isGrokAuthenticated(keyReference: keyRef)
-    case "opencode":
-      return isOpenCodeGoConnected()
+    case "opencode-go":
+      return isOpenCodeProviderConnected("opencode-go", environmentKeys: ["OPENCODE_GO_API_KEY", "OPENCODE_API_KEY"])
+    case "opencode-zen":
+      return isOpenCodeProviderConnected("opencode", environmentKeys: ["OPENCODE_ZEN_API_KEY", "OPENCODE_API_KEY"])
     case "cursor":
-      return isCursorAgentAuthenticated()
+      // Process-backed authentication checks are intentionally excluded here.
+      // This path is used during store initialization and live field editing.
+      return hasEnvironmentValue("CURSOR_API_KEY")
     case "hermes":
       return FileManager.default.fileExists(atPath: "\(NSHomeDirectory())/.local/bin/hermes")
     case "telegram":
@@ -3130,6 +3333,29 @@ final class JobmaxxingStore: ObservableObject {
     default:
       return false
     }
+  }
+
+  private static func normalizedOpenCodeConnectors(_ connectors: [IntegrationConnector]) -> [IntegrationConnector] {
+    var normalized: [IntegrationConnector] = []
+    for connector in connectors {
+      let wasLegacy = connector.id == "opencode"
+      var next = connector
+      if wasLegacy {
+        next.id = "opencode-go"
+        next.label = "OpenCode Go"
+        next.provider = "OpenCode Go"
+        next.purpose = "OpenCode Go subscription models."
+        next.configFields = [connectorField("api-key-ref", "API key variable", placeholder: "OPENCODE_GO_API_KEY", isSecret: true)]
+      }
+      if let index = normalized.firstIndex(where: { $0.id == next.id }) {
+        if !wasLegacy {
+          normalized[index] = next
+        }
+      } else {
+        normalized.append(next)
+      }
+    }
+    return normalized
   }
 
   private static func connectorByMerging(defaultConnector: IntegrationConnector, existing: IntegrationConnector) -> IntegrationConnector {
@@ -3239,7 +3465,7 @@ final class JobmaxxingStore: ObservableObject {
       "Would you be open to pointing me toward the right person or sharing what I should understand first?",
       "",
       "Best,",
-      "[Candidate]"
+      "User"
     ].joined(separator: "\n")
     return next
   }
@@ -3258,7 +3484,7 @@ final class JobmaxxingStore: ObservableObject {
         "Yes, 18:00-18:30 works for me. Please call me when you are ready.",
         "",
         "Kind regards,",
-        "[Candidate]"
+        "User"
       ].joined(separator: "\n")
     }
     if lower.contains("today") && lower.contains("tomorrow") && (lower.contains("call") || lower.contains("available")) {
@@ -3273,7 +3499,7 @@ final class JobmaxxingStore: ObservableObject {
         "I am free for the rest of today, so please let me know what time works best for you. I am also free tomorrow if that would suit you better.",
         "",
         "Kind regards,",
-        "[Candidate]"
+        "User"
       ].joined(separator: "\n")
     }
     if lower.contains("call") || lower.contains("available") {
@@ -3285,7 +3511,7 @@ final class JobmaxxingStore: ObservableObject {
         "I am free for the rest of the day, so please let me know what time works best for you. I am also free tomorrow if that would fit better.",
         "",
         "Kind regards,",
-        "[Candidate]"
+        "User"
       ].joined(separator: "\n")
     }
     return nil
@@ -3589,9 +3815,9 @@ final class JobmaxxingStore: ObservableObject {
     var modelTier: String
   }
 
-  private func runContactAgent(contact original: ContactRecord, userText: String, modelTier requestedTier: String) -> ContactAgentResult {
+  private func runContactAgent(contact original: ContactRecord, userText: String, modelTier _: String) -> ContactAgentResult {
     var contact = original
-    let tier = contactAgentTier(for: userText, requestedTier: requestedTier)
+    let tier = "Local"
     let company = contact.companyLinks.first.flatMap { link in companyProfiles.first(where: { $0.id == link.companyID }) }
     let lower = userText.lowercased()
     let wantsEmail = lower.contains("email")
@@ -3606,13 +3832,13 @@ final class JobmaxxingStore: ObservableObject {
       .map(\.trimmed)
       .filter { !$0.isEmpty }
       .uniqued
-    contact = Self.contactByApplyingPublicProfileFacts(contact, company: company, sources: sources)
+    contact.research = Self.deepContactResearchProfile(contact: contact, company: company, sources: sources)
     let draft = wantsDraft ? Self.followUpDraft(for: contact) : ""
     let emailStatus = wantsEmail || lower.contains("deep") || lower.contains("profile")
       ? Self.emailSearchStatus(for: contact)
       : ""
     var responseSections = [
-      "Goal set: complete a sourced contact profile for \(contact.name), use \(tier) model effort, read the saved contact, linked WhatsApp thread, public profile targets, and company context, then write back only sourced facts.",
+      "Local plan prepared from saved data for \(contact.name). No model, search, or browser research ran.",
       Self.contactProfileAnswer(contact: contact, company: company),
       emailStatus
     ].filter { !$0.trimmed.isEmpty }
@@ -3623,10 +3849,10 @@ final class JobmaxxingStore: ObservableObject {
       responseSections.append(Self.chromeResearchHandoff(for: contact, sources: sources))
     }
     let traces = [
-      Self.trace("Set contact-agent goal", tool: "contact_agent", detail: "Complete a sourced profile for \(contact.name). Model tier: \(tier)."),
+      Self.trace("Prepare local plan", tool: "local_planner", detail: "Review saved context for \(contact.name). No model or browser ran."),
       Self.trace("Read contact record", tool: "local_state", detail: Self.contactTraceSnapshot(contact)),
       Self.trace("Read linked WhatsApp thread", tool: "whatsapp", detail: Self.contactWhatsAppProfileSummary(contact: contact)),
-      Self.trace("Read public profile targets", tool: wantsChrome ? "chrome" : "browser", detail: sources.joined(separator: "\n")),
+      Self.trace("Public profile targets", tool: wantsChrome ? "chrome" : "browser", status: "planned", detail: sources.isEmpty ? "No public source is saved yet." : sources.joined(separator: "\n")),
       Self.trace("Write contact profile", tool: "state_write", detail: Self.contactResearchWriteSummary(contact)),
       Self.trace("Safety boundary", tool: "reasoning", detail: "Draft-only communications. No WhatsApp message, email, LinkedIn message, or external form was sent.")
     ]
@@ -3636,15 +3862,6 @@ final class JobmaxxingStore: ObservableObject {
       traces: traces,
       modelTier: tier
     )
-  }
-
-  private func contactAgentTier(for text: String, requestedTier: String) -> String {
-    let clean = requestedTier.trimmed
-    let lower = text.lowercased()
-    if clean == "High" || lower.contains("difficult") || lower.contains("every single detail") || lower.contains("hard") {
-      return "High"
-    }
-    return "Medium"
   }
 
   private static func deepContactResearchProfile(contact: ContactRecord, company: CompanyProfile?, sources: [String]) -> ContactResearchProfile {
@@ -3669,18 +3886,19 @@ final class JobmaxxingStore: ObservableObject {
       .filter { !$0.trimmed.isEmpty }
       .joined(separator: " ")
     let proposedAdditions = [
-      contact.email.trimmed.isEmpty ? "Ask or infer a reliable email only from a reviewed source; do not guess one." : "",
+      contact.email.trimmed.isEmpty ? "Find a reliable email only from a reviewed source or ask directly; do not guess one." : "",
       contact.linkedInURL.trimmed.isEmpty ? "Use Browser to find and review a public LinkedIn or personal profile." : "Use the saved LinkedIn URL as the public profile target and verify identity before citing it externally.",
       "Keep WhatsApp conversation context person-scoped and draft-only.",
       "When drafting replies, use the latest unanswered incoming WhatsApp message, the signed name, and a distinct closing from the sender."
     ].filter { !$0.trimmed.isEmpty }
     let openQuestions = [
-      contact.email.trimmed.isEmpty ? "What reliable email address is supported by a reviewed source?" : "",
-      "Is the saved public profile confirmed as the same person from the message thread?",
-      "What is this contact's role in the hiring process: hiring manager, team member, recruiter, or referral contact?"
+      contact.email.trimmed.isEmpty ? "What is a reliable email address for \(contact.name)?" : "",
+      contact.linkedInURL.trimmed.isEmpty ? "Which reviewed public profile belongs to \(contact.name)?" : "Is the saved public profile confirmed as this exact contact?",
+      "What is \(contact.name)'s role in the hiring process?",
+      "Which remaining details need a reviewed source before they can be used?"
     ].filter { !$0.trimmed.isEmpty }
     return ContactResearchProfile(
-      status: "Enhanced",
+      status: "Local plan ready",
       summary: summary,
       publicFacts: publicFacts.uniqued,
       sourceURLs: (sources + (company?.research.sourceURLs ?? [])).uniqued,
@@ -3689,15 +3907,9 @@ final class JobmaxxingStore: ObservableObject {
     )
   }
 
-  private static func contactByApplyingPublicProfileFacts(_ contact: ContactRecord, company: CompanyProfile?, sources: [String]) -> ContactRecord {
-    var next = contact
-    next.research = deepContactResearchProfile(contact: next, company: company, sources: sources)
-    return next
-  }
-
   private static func contactProfileAnswer(contact: ContactRecord, company: CompanyProfile?) -> String {
     [
-      "Profile written:",
+      "Local profile summary:",
       contact.research.summary,
       "",
       "Key sourced facts:",
@@ -3710,16 +3922,16 @@ final class JobmaxxingStore: ObservableObject {
 
   private static func emailSearchStatus(for contact: ContactRecord) -> String {
     if !contact.email.trimmed.isEmpty {
-      return "Email found: \(contact.email.trimmed)."
+      return "Saved email: \(contact.email.trimmed)."
     }
-    return "Email search result: no reliable public email is saved or visible from reviewed public sources. I did not fabricate an email pattern."
+    return "Saved email check: no email is stored. No search ran, and no address was guessed."
   }
 
   private static func chromeResearchHandoff(for contact: ContactRecord, sources: [String]) -> String {
     [
       "Browser research plan:",
-      "Open the saved LinkedIn profile and the listed post URLs.",
-      "Extract experience timeline, prior roles, full education list, certifications, skills, and visible posts.",
+      "Open the saved public profile and source URLs.",
+      "Review the experience timeline, current role, prior roles, education, certifications, skills, and visible posts.",
       "Write back only visible sourced facts.",
       "Targets:",
       sources.map { "- \($0)" }.joined(separator: "\n")
@@ -3731,12 +3943,12 @@ final class JobmaxxingStore: ObservableObject {
     return [
       "Good afternoon \(firstName),",
       "",
-      "Thank you again for the call and for sharing more context about the role.",
+      "Thank you for getting in touch.",
       "",
       "I would be happy to send over any additional information that would be useful. Please let me know if there is anything specific you would like from me before the next step.",
       "",
       "Kind regards,",
-      "[Candidate]"
+      "User"
     ].joined(separator: "\n")
   }
 
@@ -3746,14 +3958,17 @@ final class JobmaxxingStore: ObservableObject {
       return "No linked WhatsApp conversation is saved."
     }
     var points: [String] = []
-    if firstIncoming.localizedCaseInsensitiveContains("intern") {
-      points.append("The thread appears to mention an internship opportunity.")
+    if firstIncoming.localizedCaseInsensitiveContains("Adil Kourbal") {
+      points.append("The saved thread mentions Adil Kourbal.")
+    }
+    if firstIncoming.localizedCaseInsensitiveContains("Supply Chain") && firstIncoming.localizedCaseInsensitiveContains("intern") {
+      points.append("The saved thread mentions a supply-chain internship.")
     }
     if firstIncoming.localizedCaseInsensitiveContains("brief call") {
-      points.append("The contact asked for a brief call.")
+      points.append("\(contact.name) asked for a brief call.")
     }
     if profile.messages?.contains(where: { !$0.isFromMe && $0.text.contains("18:00") }) == true {
-      points.append("The thread includes a proposed evening call window.")
+      points.append("The saved conversation includes a proposed time around 18:00.")
     }
     return points.isEmpty ? "WhatsApp thread is saved for context and reply drafting." : points.joined(separator: " ")
   }
@@ -3768,12 +3983,12 @@ final class JobmaxxingStore: ObservableObject {
         contextKind: "contact",
         contextID: contact.id,
         title: "Profile inputs",
-        agentName: "Research agent",
-        status: "Done",
+        agentName: "Local planner",
+        status: "Prepared",
         summary: "",
         proposedAdditions: [],
         trace: [
-          ("reasoning", "Objective", "", "Enhance \(contact.name) from saved fields only. Do not invent public facts or rewrite private notes.", "done"),
+          ("reasoning", "Objective", "", "Prepare a profile plan for \(contact.name) from saved fields only. Do not invent public facts or rewrite private notes.", "done"),
           ("tool", "Read contact record", "Local state", contactTraceSnapshot(contact), "done"),
           ("tool", "Read WhatsApp thread", "Local state", contactWhatsAppProfileSummary(contact: contact), "done"),
           ("tool", "Write research fields", "State write", contactResearchWriteSummary(contact), "done"),
@@ -3784,23 +3999,23 @@ final class JobmaxxingStore: ObservableObject {
         contextKind: "contact",
         contextID: contact.id,
         title: "Public source plan",
-        agentName: "Browser agent",
-        status: "Done",
+        agentName: "Local planner",
+        status: "Planned",
         summary: "",
         proposedAdditions: [],
         trace: [
-          ("reasoning", "Decision", "", "The native app does not silently scrape LinkedIn or protected pages. It prepares visible public lookup targets and waits for approval.", "done"),
-          ("tool", "Prepare public query", "Search plan", publicQuery, "done"),
-          ("tool", "Prepare LinkedIn target", "Browser plan", linkedInTarget, "done"),
-          ("reasoning", "Use result", "", "Only paste reviewed facts back into the contact after checking the opened source. Do not mark unsourced facts as researched.", "done")
+          ("reasoning", "Decision", "", "The native app does not silently scrape LinkedIn or protected pages. It prepares visible public lookup targets and waits for approval.", "planned"),
+          ("tool", "Prepare public query", "Search plan", publicQuery, "planned"),
+          ("tool", "Prepare LinkedIn target", "Browser plan", linkedInTarget, "planned"),
+          ("reasoning", "Use result", "", "Only paste reviewed facts back into the contact after checking the opened source. Do not mark unsourced facts as researched.", "planned")
         ]
       ),
       researchAgentRun(
         contextKind: "contact",
         contextID: contact.id,
         title: "Contact synthesis",
-        agentName: "Synthesis agent",
-        status: "Done",
+        agentName: "Local planner",
+        status: "Prepared",
         summary: "",
         proposedAdditions: [],
         trace: [
@@ -3819,42 +4034,42 @@ final class JobmaxxingStore: ObservableObject {
         contextKind: "company",
         contextID: company.id,
         title: "Company source scout",
-        agentName: "Research agent",
-        status: "Done",
+        agentName: "Local planner",
+        status: "Planned",
         summary: "",
         proposedAdditions: [],
         trace: [
-          ("reasoning", "Objective", "", "Build a source map from saved company fields and visible sources. Do not claim new public facts without a reviewed URL.", "done"),
+          ("reasoning", "Objective", "", "Build a source map from saved company fields and visible sources. Do not claim new public facts without a reviewed URL.", "planned"),
           ("tool", "Read source list", "Local state", company.research.sourceURLs.isEmpty ? "No saved sources yet." : company.research.sourceURLs.joined(separator: "\n"), "done"),
-          ("tool", "Prepare source query", "Search plan", "\(company.name) official website careers leadership investor news", "done")
+          ("tool", "Prepare source query", "Search plan", "\(company.name) official website careers leadership investor news", "planned")
         ]
       ),
       researchAgentRun(
         contextKind: "company",
         contextID: company.id,
         title: "People map",
-        agentName: "Network mapper",
-        status: "Done",
+        agentName: "Local planner",
+        status: "Planned",
         summary: "",
         proposedAdditions: [],
         trace: [
-          ("reasoning", "Objective", "", "Map linked people before writing outreach or interview prep.", "done"),
+          ("reasoning", "Objective", "", "Map linked people before writing outreach or interview prep.", "planned"),
           ("tool", "Read contacts", "Local state", linkedContacts.isEmpty ? "No linked contacts." : linkedContacts.map { "\($0.name): \($0.role)" }.joined(separator: "\n"), "done"),
-          ("reasoning", "Boundary", "", "Relationship notes can guide drafts, but outreach stays manual and user-approved.", "done")
+          ("reasoning", "Boundary", "", "Relationship notes can guide drafts, but outreach stays manual and user-approved.", "planned")
         ]
       ),
       researchAgentRun(
         contextKind: "company",
         contextID: company.id,
         title: "Research synthesis",
-        agentName: "Synthesis agent",
-        status: "Done",
+        agentName: "Local planner",
+        status: "Planned",
         summary: "",
         proposedAdditions: [],
         trace: [
-          ("reasoning", "Inputs", "", "Combine saved company summary, public source list, linked contacts, application roles, and user proof.", "done"),
+          ("reasoning", "Inputs", "", "Combine saved company summary, public source list, linked contacts, application roles, and user proof.", "planned"),
           ("tool", "Read company", "Local state", "\(company.name): \(company.summary)", "done"),
-          ("reasoning", "Output", "", "Separate sourced company facts, user evidence, private notes, and assumptions before writing.", "done")
+          ("reasoning", "Output", "", "Separate sourced company facts, user evidence, private notes, and assumptions before writing.", "planned")
         ]
       )
     ]
@@ -3874,7 +4089,7 @@ final class JobmaxxingStore: ObservableObject {
 
   private static func contactResearchWriteSummary(_ contact: ContactRecord) -> String {
     [
-      "Status: Enhanced",
+      "Status: \(emptyFallback(contact.research.status, fallback: "Not prepared"))",
       "Summary: \(emptyFallback(contact.research.summary, fallback: "None"))",
       "Public facts: \(emptyFallback(contact.research.publicFacts.joined(separator: "; "), fallback: "None"))",
       "Saved sources: \(emptyFallback(contact.research.sourceURLs.joined(separator: ", "), fallback: "None"))",
@@ -3912,7 +4127,7 @@ final class JobmaxxingStore: ObservableObject {
       contextID: contextID,
       title: title,
       agentName: agentName,
-      modelTier: "Medium",
+      modelTier: "Local",
       status: status,
       summary: summary,
       trace: trace.map { item in
@@ -3938,12 +4153,16 @@ final class JobmaxxingStore: ObservableObject {
     return !(ProcessInfo.processInfo.environment[key] ?? "").trimmed.isEmpty
   }
 
-  private static func isOpenCodeGoConnected() -> Bool {
-    let output = LocalScriptRunner.run(
-      executable: "/usr/bin/curl",
-      arguments: ["-fsS", "--max-time", "2", "http://127.0.0.1:8787/health"]
-    )
-    return output.contains("\"ok\":true") && output.localizedCaseInsensitiveContains("opencode")
+  private static func isOpenCodeProviderConnected(_ providerID: String, environmentKeys: [String]) -> Bool {
+    if hasAnyEnvironmentValue(environmentKeys) {
+      return true
+    }
+    let authURL = URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent(".local/share/opencode/auth.json")
+    guard let data = try? Data(contentsOf: authURL),
+          let auth = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+      return false
+    }
+    return auth[providerID] != nil
   }
 
   private static func isGrokAuthenticated(keyReference: String = "") -> Bool {
@@ -4024,17 +4243,33 @@ final class JobmaxxingStore: ObservableObject {
     return object
   }
 
-  private static func isCursorAgentAuthenticated() -> Bool {
+  private static func detectConnectionIncludingProcessProbe(for connector: IntegrationConnector) async -> Bool {
+    guard connector.isEnabled else { return false }
+    guard connector.id == "cursor" else { return detectConnection(for: connector) }
+    return await isCursorAgentAuthenticated()
+  }
+
+  private static func isCursorAgentAuthenticated() async -> Bool {
     if !(ProcessInfo.processInfo.environment["CURSOR_API_KEY"] ?? "").trimmed.isEmpty {
       return true
     }
     let helperPath = NSHomeDirectory() + "/.local/bin/cursor-agent"
     if FileManager.default.isExecutableFile(atPath: helperPath) {
-      return cursorModelListIsUsable(LocalScriptRunner.run(executable: helperPath, arguments: ["models"]))
+      let result = await LocalScriptRunner.runAsync(
+        executable: helperPath,
+        arguments: ["models"],
+        timeout: 8
+      )
+      return result.exitCode == 0 && !result.didTimeOut && cursorModelListIsUsable(result.output)
     }
     let appCLI = "/Applications/Cursor.app/Contents/Resources/app/bin/cursor"
     if FileManager.default.isExecutableFile(atPath: appCLI) {
-      return cursorModelListIsUsable(LocalScriptRunner.run(executable: appCLI, arguments: ["agent", "models"]))
+      let result = await LocalScriptRunner.runAsync(
+        executable: appCLI,
+        arguments: ["agent", "models"],
+        timeout: 8
+      )
+      return result.exitCode == 0 && !result.didTimeOut && cursorModelListIsUsable(result.output)
     }
     return false
   }
@@ -4335,47 +4570,6 @@ final class JobmaxxingStore: ObservableObject {
       .contains { $0 == word }
   }
 
-  private func uniqueDestination(in directory: URL, fileName: String) -> URL {
-    let base = URL(fileURLWithPath: fileName).deletingPathExtension().lastPathComponent
-    let ext = URL(fileURLWithPath: fileName).pathExtension
-    var candidate = directory.appendingPathComponent(fileName)
-    if !fileManager.fileExists(atPath: candidate.path) {
-      return candidate
-    }
-    let suffix = UUID().uuidString.prefix(8)
-    let nextName = ext.isEmpty ? "\(base)-\(suffix)" : "\(base)-\(suffix).\(ext)"
-    candidate = directory.appendingPathComponent(nextName)
-    return candidate
-  }
-
-  private func extractText(from url: URL) -> String {
-    let ext = url.pathExtension.lowercased()
-    if ext == "pdf", let document = PDFDocument(url: url) {
-      return (0..<min(document.pageCount, Self.maxImportedPDFPages))
-        .compactMap { document.page(at: $0)?.string }
-        .joined(separator: "\n")
-        .trimmed
-        .bounded(to: Self.maxExtractedTextCharacters)
-    }
-    let fileSize = (try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
-    guard fileSize <= Self.maxImportedTextBytes else {
-      return ""
-    }
-    if ["txt", "md", "csv", "json", "html", "rtf"].contains(ext),
-       let text = try? String(contentsOf: url, encoding: .utf8) {
-      return text.trimmed.bounded(to: Self.maxExtractedTextCharacters)
-    }
-    return ""
-  }
-
-  private func summarize(text: String, fallback: String) -> String {
-    let normalized = text.replacingOccurrences(of: "\n", with: " ").trimmed
-    if normalized.isEmpty {
-      return "Imported \(fallback). Add notes or promote it to evidence after review."
-    }
-    return String(normalized.prefix(240))
-  }
-
   private static func appSupportURL() throws -> URL {
     try FileManager.default.url(
       for: .applicationSupportDirectory,
@@ -4537,7 +4731,7 @@ extension JobmaxxingStore {
       category: "Models",
       capabilities: ["Medium", "High", "review"],
       configFields: [
-        connectorField("api-key-ref", "Key ref", placeholder: "OPENAI_API_KEY")
+        connectorField("api-key-ref", "API key variable", placeholder: "OPENAI_API_KEY", isSecret: true)
       ]
     ),
     IntegrationConnector(
@@ -4550,21 +4744,34 @@ extension JobmaxxingStore {
       category: "Models",
       capabilities: ["Medium", "High", "review", "Grok"],
       configFields: [
-        connectorField("api-key-ref", "Key ref", placeholder: "XAI_API_KEY"),
+        connectorField("api-key-ref", "API key variable", placeholder: "XAI_API_KEY", isSecret: true),
         connectorField("auth-source", "Auth source", placeholder: "auto | hermes | grok-build | api-key", value: "auto")
       ]
     ),
     IntegrationConnector(
-      id: "opencode",
+      id: "opencode-go",
       label: "OpenCode Go",
-      provider: "OpenCode",
-      purpose: "Light route with DeepSeek V4 Flash.",
+      provider: "OpenCode Go",
+      purpose: "OpenCode Go subscription models.",
       isEnabled: true,
-      isConnected: JobmaxxingStore.isOpenCodeGoConnected(),
+      isConnected: JobmaxxingStore.isOpenCodeProviderConnected("opencode-go", environmentKeys: ["OPENCODE_GO_API_KEY", "OPENCODE_API_KEY"]),
       category: "Models",
-      capabilities: ["Light", "DeepSeek", "local bridge"],
+      capabilities: ["subscription", "coding models"],
       configFields: [
-        connectorField("base-url", "Base URL", value: "http://127.0.0.1:8787")
+        connectorField("api-key-ref", "API key variable", placeholder: "OPENCODE_GO_API_KEY", isSecret: true)
+      ]
+    ),
+    IntegrationConnector(
+      id: "opencode-zen",
+      label: "OpenCode Zen",
+      provider: "OpenCode Zen",
+      purpose: "OpenCode Zen API models.",
+      isEnabled: true,
+      isConnected: JobmaxxingStore.isOpenCodeProviderConnected("opencode", environmentKeys: ["OPENCODE_ZEN_API_KEY", "OPENCODE_API_KEY"]),
+      category: "Models",
+      capabilities: ["API", "coding models"],
+      configFields: [
+        connectorField("api-key-ref", "API key variable", placeholder: "OPENCODE_ZEN_API_KEY", isSecret: true)
       ]
     ),
     IntegrationConnector(
@@ -4573,11 +4780,11 @@ extension JobmaxxingStore {
       provider: "Cursor",
       purpose: "Programmatic editor agent route.",
       isEnabled: true,
-      isConnected: JobmaxxingStore.isCursorAgentAuthenticated(),
+      isConnected: JobmaxxingStore.hasEnvironmentValue("CURSOR_API_KEY"),
       category: "Models",
       capabilities: ["agent", "code", "local"],
       configFields: [
-        connectorField("api-key-ref", "Key ref", placeholder: "CURSOR_API_KEY or Cursor login")
+        connectorField("api-key-ref", "Key ref", placeholder: "CURSOR_API_KEY or Cursor login", isSecret: true)
       ]
     ),
     IntegrationConnector(
@@ -4863,15 +5070,269 @@ extension JobmaxxingStore {
     )
   ]
 
-  static let defaultProfileSkills: [String] = []
+  static let defaultProfileSkills = [
+    "Agent workflows",
+    "SwiftUI macOS apps",
+    "Browser automation handoffs",
+    "MCP tooling",
+    "Prompt engineering",
+    "Finance research systems",
+    "Provider routing",
+    "Backend services",
+    "Frontend product surfaces",
+    "Review loops",
+    "Telegram integrations",
+    "Local-first tools"
+  ]
 
-  static let defaultProfileExperience: [ProfileExperience] = []
+  static let defaultProfileExperience: [ProfileExperience] = [
+    ProfileExperience(
+      id: "profile-exp-marauder",
+      title: "Built Marauder finance workspace",
+      organization: "Project",
+      location: "Remote",
+      period: "Recent work",
+      summary: "Built a multi-surface finance research system with desktop terminal, PWA, Smaug control plane, notebook, QuantLab, backend, shared contracts, and provider routing.",
+      bullets: [
+        "Connected research, notebooks, provider routing, and deployment into one workspace.",
+        "Shipped usable surfaces instead of isolated demos.",
+        "Kept claims backed by live project links."
+      ],
+      sourceURL: "https://marauder-main.up.railway.app",
+      projects: [
+        ProfileExperienceProject(
+          id: "profile-exp-marauder-core",
+          name: "Finance research workspace",
+          summary: "Multi-surface finance research product with provider routing.",
+          detail: "Connected research, notebooks, provider routing, and deployment into one workspace so claims stay backed by live surfaces instead of isolated demos.",
+          specificSample: "One path runs a research question through provider-routed tools, notebook notes, and a reviewable output surface without losing source context.",
+          tools: ["TypeScript", "provider routing", "notebooks"],
+          metrics: [],
+          tags: ["finance", "research", "product"],
+          sourceURL: "https://marauder-main.up.railway.app"
+        )
+      ]
+    ),
+    ProfileExperience(
+      id: "profile-exp-smaug",
+      title: "Built Smaug agent control plane",
+      organization: "Project",
+      location: "Remote",
+      period: "Recent work",
+      summary: "Built an assistant and operations control plane with harnesses, memory links, tools, workflow runs, Telegram integration, and runner visibility.",
+      bullets: [
+        "Designed the control plane around inspectable agent runs.",
+        "Linked memory, tools, Telegram intake, and workflow status.",
+        "Focused on operational visibility rather than black-box automation."
+      ],
+      sourceURL: "https://smaug.up.railway.app",
+      projects: [
+        ProfileExperienceProject(
+          id: "profile-exp-smaug-core",
+          name: "Agent control plane",
+          summary: "Inspectable agent runs with memory, tools, and Telegram intake.",
+          detail: "Designed the control plane around inspectable agent runs and linked memory, tools, Telegram intake, and workflow status.",
+          specificSample: "A task enters through Telegram or the UI, routes through tools with memory links, and only proceeds after review-visible state is recorded.",
+          tools: ["agents", "Telegram", "workflow runner"],
+          metrics: [],
+          tags: ["agents", "automation", "ops"],
+          sourceURL: "https://smaug.up.railway.app"
+        )
+      ]
+    ),
+    ProfileExperience(
+      id: "profile-exp-jobmaxxing",
+      title: "Built Jobmaxxing",
+      organization: "Open-source project",
+      location: "Local macOS",
+      period: "Current work",
+      summary: "Built a local-first job-search operating system with MCP tools, browser safety gates, writing memory, and native macOS workspace.",
+      bullets: [
+        "Created a native workspace for applications, documents, writing, interviews, safe browser planning, and agent routing.",
+        "Added proof-linked writing rules to avoid generic AI application text.",
+        "Layered Codex and Hermes-style orchestration into a local app workflow."
+      ],
+      sourceURL: "https://github.com/Balllvin/Jobmaxxing",
+      projects: [
+        ProfileExperienceProject(
+          id: "profile-exp-jobmaxxing-core",
+          name: "Evidence-backed hiring workspace",
+          summary: "Native job-search workspace with writing audits and browser safety gates.",
+          detail: "Built a local-first job-search OS with applications, company research, experience writeups, writing audits, and approval gates before external actions.",
+          specificSample: "A draft application pack pulls broad experience themes plus one project sample, then fails audit if claims lack saved proof.",
+          tools: ["SwiftUI", "MCP", "Hermes"],
+          metrics: [],
+          tags: ["macos", "job search", "writing"],
+          sourceURL: "https://github.com/Balllvin/Jobmaxxing"
+        )
+      ]
+    )
+  ]
 
-  static let defaultProfileProjects: [ProfileProject] = []
+  static let defaultProfileProjects: [ProfileProject] = [
+    ProfileProject(
+      id: "profile-project-marauder",
+      name: "Marauder",
+      url: "https://marauder-main.up.railway.app",
+      summary: "Finance research workspace with multi-surface product architecture and provider routing.",
+      tags: ["finance", "research", "product", "agents"]
+    ),
+    ProfileProject(
+      id: "profile-project-quant-lab",
+      name: "Quant Lab",
+      url: "https://quant-lab-production.up.railway.app",
+      summary: "Strategy testing surface with baselines, notes, and proof-first interpretation.",
+      tags: ["finance", "data", "testing"]
+    ),
+    ProfileProject(
+      id: "profile-project-smaug",
+      name: "Smaug",
+      url: "https://smaug.up.railway.app",
+      summary: "Agent control plane with workflow visibility, tools, memory links, and Telegram intake.",
+      tags: ["agents", "automation", "workflow"]
+    ),
+    ProfileProject(
+      id: "profile-project-jobmaxxing",
+      name: "Jobmaxxing",
+      url: "https://github.com/Balllvin/Jobmaxxing",
+      summary: "Native macOS job-search workspace with Codex/Hermes tooling, evidence memory, and browser safety gates.",
+      tags: ["macos", "swift", "job search", "mcp"]
+    )
+  ]
 
-  static let defaultProfileMemory: [ProfileMemory] = []
+  static let defaultProfileMemory: [ProfileMemory] = [
+    ProfileMemory(
+      id: "profile-memory-direct-writing",
+      kind: "Writing",
+      title: "Direct proof-first writing",
+      detail: "Recruiter and application text should name what was built, include one useful link, and avoid hype.",
+      source: "User preference",
+      strength: 5
+    ),
+    ProfileMemory(
+      id: "profile-memory-anti-slop",
+      kind: "Writing",
+      title: "No generic excitement language",
+      detail: "Avoid phrases like excited, innovative, passionate, dynamic, and cutting-edge unless the sentence also contains concrete evidence.",
+      source: "Prompt memory",
+      strength: 5
+    ),
+    ProfileMemory(
+      id: "profile-memory-agentic-products",
+      kind: "Positioning",
+      title: "Strongest positioning",
+      detail: "Best-fit roles involve agent platforms, automation, browser workflows, applied AI tools, finance research systems, or founder-style product engineering.",
+      source: "Evidence library",
+      strength: 4
+    )
+  ]
 
-  static let defaultCompanyProfiles: [CompanyProfile] = []
+  static let defaultCompanyProfiles: [CompanyProfile] = [
+    CompanyProfile(
+      id: "marauder",
+      name: "Marauder",
+      website: "https://marauder-main.up.railway.app",
+      linkedInURL: "",
+      category: "User proof",
+      size: "Project",
+      headquarters: "Local-first",
+      publicStatus: "Private project",
+      summary: "Finance research workspace with desktop terminal, PWA, Smaug control plane, notebook, QuantLab, backend, shared contracts, and provider routing.",
+      relationship: "Built by user",
+      applicationIDs: [],
+      experienceIDs: ["profile-exp-marauder"],
+      submittedMaterials: [],
+      people: [],
+      research: companyResearch(
+        status: "Known from user evidence",
+        confidence: 72,
+        website: "https://marauder-main.up.railway.app",
+        products: ["Finance research workspace", "Provider-routed research surfaces"],
+        businessModel: "User-built proof project, not an employer.",
+        hiringSignals: ["finance", "research", "product", "backend", "frontend", "agents"]
+      ),
+      nextActions: ["Use as proof for finance, agent, research, backend, frontend, and product roles.", "Keep links attached when used in contact messages."],
+      notes: ""
+    ),
+    CompanyProfile(
+      id: "smaug",
+      name: "Smaug",
+      website: "https://smaug.up.railway.app",
+      linkedInURL: "",
+      category: "User proof",
+      size: "Project",
+      headquarters: "Local-first",
+      publicStatus: "Private project",
+      summary: "Assistant and operations control plane with harnesses, memory links, tools, workflow runs, Telegram integration, and runner visibility.",
+      relationship: "Built by user",
+      applicationIDs: [],
+      experienceIDs: ["profile-exp-smaug"],
+      submittedMaterials: [],
+      people: [],
+      research: companyResearch(
+        status: "Known from user evidence",
+        confidence: 72,
+        website: "https://smaug.up.railway.app",
+        products: ["Agent control plane", "Workflow runner visibility", "Telegram intent intake"],
+        businessModel: "User-built proof project, not an employer.",
+        hiringSignals: ["agents", "automation", "workflow", "telegram", "tools"]
+      ),
+      nextActions: ["Use as proof for agent platform and operations automation roles.", "Attach the link when writing about workflow visibility."],
+      notes: ""
+    ),
+    CompanyProfile(
+      id: "quant-lab",
+      name: "Quant Lab",
+      website: "https://quant-lab-production.up.railway.app",
+      linkedInURL: "",
+      category: "User proof",
+      size: "Project",
+      headquarters: "Local-first",
+      publicStatus: "Private project",
+      summary: "Strategy testing surface that turns a rule into a backend-backed result with baselines, notes, and proof-first interpretation.",
+      relationship: "Built by user",
+      applicationIDs: [],
+      experienceIDs: [],
+      submittedMaterials: [],
+      people: [],
+      research: companyResearch(
+        status: "Known from user evidence",
+        confidence: 68,
+        website: "https://quant-lab-production.up.railway.app",
+        products: ["Strategy testing", "Baseline comparison", "Proof-first interpretation"],
+        businessModel: "User-built proof project, not an employer.",
+        hiringSignals: ["finance", "data", "research", "testing"]
+      ),
+      nextActions: ["Use as proof for finance, data, and research tooling roles.", "Attach only when the target role values testable systems."],
+      notes: ""
+    ),
+    CompanyProfile(
+      id: "jobmaxxing",
+      name: "Jobmaxxing",
+      website: "https://github.com/Balllvin/Jobmaxxing",
+      linkedInURL: "",
+      category: "User proof",
+      size: "Open-source project",
+      headquarters: "Local macOS",
+      publicStatus: "Open-source",
+      summary: "Native macOS job-search workspace with Codex/Hermes tooling, evidence memory, company profiles, browser safety gates, and local state.",
+      relationship: "Built by user",
+      applicationIDs: [],
+      experienceIDs: ["profile-exp-jobmaxxing"],
+      submittedMaterials: [],
+      people: [],
+      research: companyResearch(
+        status: "Known from repository",
+        confidence: 70,
+        website: "https://github.com/Balllvin/Jobmaxxing",
+        products: ["Native job-search workspace", "Company profiles", "MCP tools", "Browser safety plans"],
+        businessModel: "Open-source local-first tool.",
+        hiringSignals: ["agents", "macos", "swift", "mcp", "job search"]
+      ),
+      nextActions: ["Use as proof for native macOS, local-first agents, and hiring workflow roles.", "Link to the repository when the role values inspectable code."],
+      notes: ""
+    )
+  ]
 
   static func companyID(for name: String) -> String {
     let scalars = name.lowercased().unicodeScalars.map { scalar -> Character in
@@ -5400,22 +5861,60 @@ extension JobmaxxingStore {
 
   static let defaultState = JobmaxxingState(
     profile: CandidateProfile(
-      name: "Candidate",
-      headline: "",
+      name: "Example User",
+      headline: "AI product engineer building agentic tools, finance research systems, and local-first automation.",
       linkedInURL: "",
-      about: "",
-      targetRoles: [],
-      locations: [],
-      workAuthorization: "",
-      compensationGoal: "",
-      writingPreferences: [],
-      evidence: [],
-      experience: [],
+      about: "Builds proof-backed AI workflows: agent control planes, finance research systems, safe browser workflows, local-first macOS apps, and review loops that make generated work inspectable.",
+      targetRoles: ["AI product engineer", "founding engineer", "automation engineer"],
+      locations: ["Remote", "Zurich", "London", "New York"],
+      workAuthorization: "Confirm per role before applying.",
+      compensationGoal: "High-upside role with strong base, equity, or clear contracting budget.",
+      writingPreferences: [
+        "Write directly and with proof.",
+        "Use Amazon-style short sentences.",
+        "Remove hype unless it is backed by a link.",
+        "Name the shipped thing, not just the skill."
+      ],
+      evidence: [
+        EvidenceItem(
+          id: "evidence-marauder",
+          title: "Built Marauder finance workspace",
+          proof: "Built a multi-surface finance research system with desktop terminal, PWA, Smaug control plane, notebook, QuantLab, backend, shared contracts, and provider routing.",
+          sourceURL: "https://marauder-main.up.railway.app",
+          tags: ["finance", "research", "product", "backend", "frontend", "agents"],
+          strength: 5
+        ),
+        EvidenceItem(
+          id: "evidence-quantlab",
+          title: "Built Quant Lab",
+          proof: "Built a strategy testing surface that turns a rule into a backend-backed result with baselines, notes, and proof-first interpretation.",
+          sourceURL: "https://quant-lab-production.up.railway.app",
+          tags: ["finance", "data", "research", "testing"],
+          strength: 5
+        ),
+        EvidenceItem(
+          id: "evidence-smaug",
+          title: "Built Smaug agent control plane",
+          proof: "Built an assistant and operations control plane with harnesses, memory links, tools, workflow runs, Telegram integration, and runner visibility.",
+          sourceURL: "https://smaug.up.railway.app",
+          tags: ["agents", "automation", "workflow", "telegram", "tools"],
+          strength: 5
+        ),
+        EvidenceItem(
+          id: "evidence-jobmaxxing",
+          title: "Built Jobmaxxing",
+          proof: "Built this local-first job-search operating system with MCP tools, browser safety gates, writing memory, and native macOS workspace.",
+          sourceURL: "https://github.com/Balllvin/Jobmaxxing",
+          tags: ["agents", "macos", "swift", "mcp", "job search"],
+          strength: 4
+        )
+      ],
+      experience: defaultProfileExperience,
       education: [],
-      skills: [],
+      skills: defaultProfileSkills,
       certifications: [],
-      profileProjects: [],
-      personalMemory: [],
+      profileProjects: defaultProfileProjects,
+      personalMemory: defaultProfileMemory,
       linkedInImportPlan: nil
     ),
     jobs: [],
@@ -5426,14 +5925,14 @@ extension JobmaxxingStore {
       ModelRoute(
         id: "cheap-drafts",
         label: "Light",
-        provider: "OpenCode",
+        provider: "OpenCode Go",
         model: "deepseek-v4-flash",
         reasoningEffort: "low",
         purpose: "Cheap extraction, keywording, summaries, and low-risk first drafts.",
-        baseURL: "http://127.0.0.1:8787/v1",
-        keyReference: "Local OpenCode Go bridge",
+        baseURL: "https://opencode.ai/zen/go/v1",
+        keyReference: "OPENCODE_GO_API_KEY",
         isEnabled: true,
-        isConnected: JobmaxxingStore.isOpenCodeGoConnected()
+        isConnected: JobmaxxingStore.isOpenCodeProviderConnected("opencode-go", environmentKeys: ["OPENCODE_GO_API_KEY", "OPENCODE_API_KEY"])
       ),
       ModelRoute(
         id: "standard-writing",

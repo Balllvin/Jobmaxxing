@@ -41,7 +41,7 @@ enum HermesHighAgentRunner {
 
   private static func sessionPrompt(for request: HermesHighAgentRequest) -> String {
     var promptParts = [
-      "Reply to the user in Markdown from the live Hermes session.",
+      "Reply to User in Markdown from the live Hermes session.",
       "Use the installed Jobmaxxing layer, MCP tools, saved evidence, and safety policy.",
       "Do not expose CLI progress as the final answer.",
       "User message: \(oneLine(request.visibleUserText))",
@@ -318,6 +318,7 @@ private actor HermesNativeCLISession {
   private var inputPipe: Pipe?
   private var outputURL: URL?
   private var outputHandle: FileHandle?
+  private var turnInProgress = false
 
   func runTurn(
     input: String,
@@ -326,6 +327,23 @@ private actor HermesNativeCLISession {
     timeout: TimeInterval,
     progress: HermesHighAgentRunner.ProgressHandler?
   ) async -> HermesHighAgentResult {
+    let commandText = input.trimmed
+    guard !commandText.isEmpty else {
+      return HermesHighAgentRunner.failure("Nothing was sent to Hermes.", tool: displayTool)
+    }
+
+    guard beginTurn() else {
+      return HermesHighAgentRunner.failure(
+        "Hermes is already working on another request. Wait for it to finish, then try again.",
+        tool: displayTool
+      )
+    }
+    defer { turnInProgress = false }
+
+    guard !Task.isCancelled else {
+      return HermesHighAgentRunner.failure("Hermes request cancelled.", tool: displayTool)
+    }
+
     guard await startIfNeeded() else {
       return HermesHighAgentRunner.failure(
         "Hermes is not available to the native app. Install Hermes or set HERMES_BIN to the executable path.",
@@ -334,11 +352,6 @@ private actor HermesNativeCLISession {
     }
     guard let inputPipe, let outputURL else {
       return HermesHighAgentRunner.failure("Hermes session did not expose stdin/stdout.", tool: "hermes chat --cli -Q")
-    }
-
-    let commandText = input.trimmed
-    guard !commandText.isEmpty else {
-      return HermesHighAgentRunner.failure("Nothing was sent to Hermes.", tool: displayTool)
     }
 
     let startOffset = fileSize(outputURL)
@@ -354,6 +367,12 @@ private actor HermesNativeCLISession {
       timeout: timeout,
       progress: progress
     )
+  }
+
+  private func beginTurn() -> Bool {
+    guard !turnInProgress else { return false }
+    turnInProgress = true
+    return true
   }
 
   private func startIfNeeded() async -> Bool {
@@ -411,14 +430,28 @@ private actor HermesNativeCLISession {
       return HermesHighAgentRunner.failure("Hermes output log was unavailable.", tool: displayTool)
     }
 
+    guard let readHandle = try? FileHandle(forReadingFrom: outputURL) else {
+      return HermesHighAgentRunner.failure("Hermes output log could not be opened.", tool: displayTool)
+    }
+    defer { try? readHandle.close() }
+    do {
+      try readHandle.seek(toOffset: startOffset)
+    } catch {
+      return HermesHighAgentRunner.failure("Hermes output log could not be read: \(error.localizedDescription)", tool: displayTool)
+    }
+
     let deadline = Date().addingTimeInterval(timeout)
-    var lastRaw = ""
+    var raw = ""
     var lastChange = Date()
     var lastProgressEmit = Date.distantPast
     while Date() < deadline {
-      let raw = readOutput(outputURL, from: startOffset)
-      if raw != lastRaw {
-        lastRaw = raw
+      if Task.isCancelled {
+        stop()
+        return HermesHighAgentRunner.failure("Hermes request cancelled.", tool: displayTool)
+      }
+      let nextData = (try? readHandle.readToEnd()) ?? Data()
+      if !nextData.isEmpty {
+        raw.append(String(decoding: nextData, as: UTF8.self))
         lastChange = Date()
       }
       if Date().timeIntervalSince(lastProgressEmit) >= 2 {
@@ -444,7 +477,12 @@ private actor HermesNativeCLISession {
       if process?.isRunning != true {
         return result(from: raw, input: input, displayTool: displayTool, commandID: commandID)
       }
-      try? await Task.sleep(nanoseconds: 200_000_000)
+      do {
+        try await Task.sleep(nanoseconds: 200_000_000)
+      } catch {
+        stop()
+        return HermesHighAgentRunner.failure("Hermes request cancelled.", tool: displayTool)
+      }
     }
 
     stop()
@@ -571,18 +609,6 @@ private actor HermesNativeCLISession {
   private func fileSize(_ url: URL) -> UInt64 {
     let size = (try? FileManager.default.attributesOfItem(atPath: url.path)[.size] as? NSNumber)?.uint64Value
     return size ?? 0
-  }
-
-  private func readOutput(_ url: URL, from offset: UInt64) -> String {
-    do {
-      let handle = try FileHandle(forReadingFrom: url)
-      defer { try? handle.close() }
-      try handle.seek(toOffset: offset)
-      let data = try handle.readToEnd() ?? Data()
-      return String(data: data, encoding: .utf8) ?? ""
-    } catch {
-      return "Could not read Hermes session output: \(error.localizedDescription)"
-    }
   }
 
   private func stop() {

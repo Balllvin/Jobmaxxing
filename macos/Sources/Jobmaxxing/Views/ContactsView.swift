@@ -1,8 +1,29 @@
 import AppKit
 import SwiftUI
 
+struct ContactWorkspaceDraft: Equatable {
+  var selectedCompanyID = ""
+  var name = ""
+  var role = ""
+  var jobDescription = ""
+  var linkedInURL = ""
+  var phone = ""
+  var email = ""
+  var location = ""
+  var sourceURL = ""
+  var relationship = "Contact"
+  var howMet = ""
+  var notes = ""
+  var personalNotes = ""
+  var projectNotes = ""
+  var whatsAppQuery = ""
+  var isAddingContact = false
+  var isImportingWhatsApp = false
+}
+
 struct ContactsView: View {
   @EnvironmentObject private var store: JobmaxxingStore
+  @Binding var workspaceDraft: ContactWorkspaceDraft
   let initialCompanyID: String
   let openCompany: (String) -> Void
 
@@ -47,31 +68,31 @@ struct ContactsView: View {
     return store.contacts.first(where: { $0.id == selectedContactID })
   }
 
-  private var visibleRuns: [ResearchAgentRun] {
+  private func visibleRuns(for contacts: [ContactRecord]) -> [ResearchAgentRun] {
     if let selectedContact {
       return store.agentRuns(forContactID: selectedContact.id)
     }
-    return store.agentRuns(for: filteredContacts.map(\.id))
+    return store.agentRuns(for: contacts.map(\.id))
   }
 
   var body: some View {
+    let contacts = filteredContacts
+    let runs = visibleRuns(for: contacts)
     ScrollView {
       VStack(alignment: .leading, spacing: 0) {
         if let contact = selectedContact {
           VStack(alignment: .leading, spacing: 12) {
-            Button {
-              selectedContactID = ""
-            } label: {
-              Label("Back to people", systemImage: "chevron.left")
-            }
-            .buttonStyle(.bordered)
+            ContactDetailPanel(
+              contact: contact,
+              openCompany: openCompany,
+              back: { selectedContactID = "" },
+              enhance: {
+                enhanceStatus = store.enhanceContact(contactID: contact.id)
+                selectedContactID = contact.id
+              }
+            )
 
-            ContactDetailPanel(contact: contact, openCompany: openCompany) {
-              enhanceStatus = store.enhanceContact(contactID: contact.id)
-              selectedContactID = contact.id
-            }
-
-            DisclosureGroup("Agent") {
+            DisclosureGroup("Local tools") {
               ContactAgentPanel(contact: contact)
             }
             .padding(.top, 4)
@@ -81,12 +102,12 @@ struct ContactsView: View {
           VStack(alignment: .leading, spacing: 14) {
             ViewThatFits(in: .horizontal) {
               HStack(alignment: .firstTextBaseline) {
-                peopleTitle
+                peopleTitle(count: contacts.count)
                 Spacer()
                 contactActions
               }
               VStack(alignment: .leading, spacing: 8) {
-                peopleTitle
+                peopleTitle(count: contacts.count)
                 contactActions
               }
             }
@@ -134,18 +155,18 @@ struct ContactsView: View {
             }
 
             ContactList(
-              contacts: filteredContacts,
+              contacts: contacts,
               selectedContactID: $selectedContactID
             )
 
-            DisclosureGroup("Agent history", isExpanded: $isAgentHistoryOpen) {
+            DisclosureGroup("Plan history", isExpanded: $isAgentHistoryOpen) {
               AgentManagerPanel(
-                title: "Agents",
-                runs: visibleRuns,
-                actionTitle: "Enhance people",
-                actionSystemImage: "sparkles"
+                title: "Local plans",
+                runs: runs,
+                actionTitle: "Prepare people plans",
+                actionSystemImage: "list.bullet.clipboard"
               ) {
-                enhanceStatus = store.enhanceContacts(contactIDs: filteredContacts.map(\.id))
+                enhanceStatus = store.enhanceContacts(contactIDs: contacts.map(\.id))
               }
             }
             .font(.subheadline)
@@ -163,9 +184,14 @@ struct ContactsView: View {
       }
       .padding(18)
     }
-    .onAppear(perform: selectDefaults)
-    .onChange(of: filteredContacts.map(\.id)) { _, ids in
-      if !ids.contains(selectedContactID) {
+    .onAppear {
+      restoreWorkspaceDraft()
+      selectDefaults()
+    }
+    .onDisappear(perform: preserveWorkspaceDraft)
+    .onChange(of: contacts.map(\.id)) { _, ids in
+      if !selectedContactID.isEmpty,
+         !store.contacts.contains(where: { $0.id == selectedContactID }) {
         selectedContactID = ""
       }
     }
@@ -190,14 +216,17 @@ struct ContactsView: View {
     ) else { return }
     selectedContactID = contactID
     clearForm()
+    preserveWorkspaceDraft()
   }
 
   private func selectDefaults() {
     if !initialCompanyID.isEmpty {
-      selectedCompanyID = initialCompanyID
       selectedCompanyFilter = initialCompanyID
+      if selectedCompanyID.isEmpty {
+        selectedCompanyID = initialCompanyID
+      }
     } else if selectedCompanyID.isEmpty {
-      selectedCompanyID = store.companyProfiles.first?.id ?? ""
+      selectedCompanyID = store.companyProfiles.first(where: { $0.id == "exampleco" })?.id ?? store.companyProfiles.first?.id ?? ""
     }
     selectedContactID = ""
   }
@@ -218,6 +247,48 @@ struct ContactsView: View {
     projectNotes = ""
   }
 
+  private func restoreWorkspaceDraft() {
+    selectedCompanyID = workspaceDraft.selectedCompanyID
+    name = workspaceDraft.name
+    role = workspaceDraft.role
+    jobDescription = workspaceDraft.jobDescription
+    linkedInURL = workspaceDraft.linkedInURL
+    phone = workspaceDraft.phone
+    email = workspaceDraft.email
+    location = workspaceDraft.location
+    sourceURL = workspaceDraft.sourceURL
+    relationship = workspaceDraft.relationship
+    howMet = workspaceDraft.howMet
+    notes = workspaceDraft.notes
+    personalNotes = workspaceDraft.personalNotes
+    projectNotes = workspaceDraft.projectNotes
+    whatsAppQuery = workspaceDraft.whatsAppQuery
+    isAddingContact = workspaceDraft.isAddingContact
+    isImportingWhatsApp = workspaceDraft.isImportingWhatsApp
+  }
+
+  private func preserveWorkspaceDraft() {
+    workspaceDraft = ContactWorkspaceDraft(
+      selectedCompanyID: selectedCompanyID,
+      name: name,
+      role: role,
+      jobDescription: jobDescription,
+      linkedInURL: linkedInURL,
+      phone: phone,
+      email: email,
+      location: location,
+      sourceURL: sourceURL,
+      relationship: relationship,
+      howMet: howMet,
+      notes: notes,
+      personalNotes: personalNotes,
+      projectNotes: projectNotes,
+      whatsAppQuery: whatsAppQuery,
+      isAddingContact: isAddingContact,
+      isImportingWhatsApp: isImportingWhatsApp
+    )
+  }
+
   private func toggleAddContact() {
     isAddingContact.toggle()
     if isAddingContact {
@@ -232,11 +303,11 @@ struct ContactsView: View {
     }
   }
 
-  private var peopleTitle: some View {
+  private func peopleTitle(count: Int) -> some View {
     HStack(alignment: .firstTextBaseline, spacing: 8) {
       Text("People")
         .font(.title2.weight(.semibold))
-      Text("\(filteredContacts.count)")
+      Text("\(count)")
         .font(.callout.monospacedDigit())
         .foregroundStyle(.secondary)
     }
@@ -322,9 +393,11 @@ private struct ContactFilterBar: View {
             selectedContactID = ""
           } label: {
             Image(systemName: "xmark.circle")
+              .frame(width: 44, height: 44)
           }
-          .buttonStyle(.plain)
+          .buttonStyle(LiquidPressButtonStyle())
           .help("Clear contact selection")
+          .accessibilityLabel("Clear contact selection")
         }
       }
       HStack(spacing: 8) {
@@ -358,21 +431,24 @@ private struct ContactList: View {
     if contacts.isEmpty {
       EmptyPanel(title: "No people found", detail: "Clear filters or add a person.")
     } else {
-      VStack(spacing: 0) {
+      LazyVStack(spacing: 0) {
         ForEach(contacts) { contact in
-          ContactRow(contact: contact, isSelected: selectedContactID == contact.id)
-            .onTapGesture {
-              selectedContactID = contact.id
-            }
-            .accessibilityAddTraits(.isButton)
+          Button {
+            selectedContactID = contact.id
+          } label: {
+            ContactRow(contact: contact, isSelected: selectedContactID == contact.id)
+          }
+            .buttonStyle(LiquidPressButtonStyle())
             .accessibilityLabel(contact.name)
+            .accessibilityValue(selectedContactID == contact.id ? "Selected" : "")
+            .accessibilityHint("Opens this contact")
           if contact.id != contacts.last?.id {
             Divider()
           }
         }
       }
-      .background(.background)
-      .overlay(Rectangle().stroke(.separator, lineWidth: 1))
+      .background(AppTheme.opaqueSurface)
+      .overlay(Rectangle().stroke(AppTheme.border, lineWidth: 1))
     }
   }
 }
@@ -468,6 +544,16 @@ private struct ContactIntakePanel: View {
         thirdText: $linkedInURL
       )
       ContactContextField(text: $notes)
+      DisclosureGroup("More details") {
+        VStack(alignment: .leading, spacing: 10) {
+          ContactFieldPair(firstTitle: "Location", firstText: $location, secondTitle: "Relationship", secondText: $relationship)
+          ContactFieldPair(firstTitle: "Source URL", firstText: $sourceURL, secondTitle: "How you met", secondText: $howMet)
+          ContactFormField(title: "Relevant job or remit", text: $jobDescription, isMultiline: true)
+          ContactFormField(title: "Personal context", text: $personalNotes, isMultiline: true)
+          ContactFormField(title: "Projects or shared work", text: $projectNotes, isMultiline: true)
+        }
+        .padding(.top, 8)
+      }
       Button {
         save()
       } label: {
@@ -487,6 +573,7 @@ private struct WhatsAppContactPanel: View {
   @Binding var status: String
   @Binding var candidates: [WhatsAppThreadCandidate]
   @Binding var selectedContactID: String
+  @State private var isWorking = false
 
   var body: some View {
     VStack(alignment: .leading, spacing: 10) {
@@ -539,25 +626,18 @@ private struct WhatsAppContactPanel: View {
             }
             Spacer()
             Button {
-              let result = store.addWhatsAppContactMetadata(
-                companyID: selectedCompanyID,
-                candidate: candidate,
-                fallbackName: query,
-                title: "",
-                relationship: "Contact",
-                notes: "Added from WhatsApp search."
-              )
-              status = result.status
-              if let contactID = result.contactID {
-                selectedContactID = contactID
-              }
-              candidates = []
-              query = ""
+              Task { await save(candidate) }
             } label: {
-              Label("Save person", systemImage: "person.crop.circle.badge.plus")
+              if isWorking {
+                ProgressView()
+                  .controlSize(.small)
+                  .frame(minWidth: 44, minHeight: 44)
+              } else {
+                Label("Save person", systemImage: "person.crop.circle.badge.plus")
+              }
             }
             .buttonStyle(.borderedProminent)
-            .disabled(selectedCompanyID.isEmpty)
+            .disabled(selectedCompanyID.isEmpty || isWorking)
           }
           .padding(.vertical, 10)
           if candidate.id != candidates.last?.id {
@@ -571,27 +651,74 @@ private struct WhatsAppContactPanel: View {
 
   private var latestSenderButton: some View {
     Button {
-      let result = store.addLatestWhatsAppContactMetadata(companyID: selectedCompanyID)
-      status = result.status
-      if let contactID = result.contactID {
-        selectedContactID = contactID
-      }
+      Task { await saveLatestSender() }
     } label: {
-      Label("Save latest sender", systemImage: "message.badge")
+      if isWorking {
+        ProgressView()
+          .controlSize(.small)
+          .frame(minWidth: 44, minHeight: 44)
+      } else {
+        Label("Save latest sender", systemImage: "message.badge")
+      }
     }
     .buttonStyle(.bordered)
-    .disabled(selectedCompanyID.isEmpty)
+    .disabled(selectedCompanyID.isEmpty || isWorking)
   }
 
   private var findThreadButton: some View {
     Button {
-      let result = store.searchWhatsAppThreads(query: query)
-      candidates = result.candidates
-      status = result.status
+      Task { await findThreads() }
     } label: {
-      Label("Find thread", systemImage: "magnifyingglass")
+      if isWorking {
+        ProgressView()
+          .controlSize(.small)
+          .frame(minWidth: 44, minHeight: 44)
+      } else {
+        Label("Find thread", systemImage: "magnifyingglass")
+      }
     }
     .buttonStyle(.bordered)
+    .disabled(isWorking)
+  }
+
+  private func findThreads() async {
+    guard !isWorking else { return }
+    isWorking = true
+    defer { isWorking = false }
+    let result = await store.searchWhatsAppThreads(query: query)
+    candidates = result.candidates
+    status = result.status
+  }
+
+  private func saveLatestSender() async {
+    guard !isWorking else { return }
+    isWorking = true
+    defer { isWorking = false }
+    let result = await store.addLatestWhatsAppContactMetadata(companyID: selectedCompanyID)
+    status = result.status
+    if let contactID = result.contactID {
+      selectedContactID = contactID
+    }
+  }
+
+  private func save(_ candidate: WhatsAppThreadCandidate) async {
+    guard !isWorking else { return }
+    isWorking = true
+    defer { isWorking = false }
+    let result = await store.addWhatsAppContactMetadata(
+      companyID: selectedCompanyID,
+      candidate: candidate,
+      fallbackName: query,
+      title: "",
+      relationship: "Contact",
+      notes: "Added from WhatsApp search."
+    )
+    status = result.status
+    if let contactID = result.contactID {
+      selectedContactID = contactID
+    }
+    candidates = []
+    query = ""
   }
 }
 
@@ -604,12 +731,12 @@ private struct ContactFieldPair: View {
   var body: some View {
     ViewThatFits(in: .horizontal) {
       HStack {
-        TextField(firstTitle, text: $firstText)
-        TextField(secondTitle, text: $secondText)
+        ContactFormField(title: firstTitle, text: $firstText)
+        ContactFormField(title: secondTitle, text: $secondText)
       }
       VStack(alignment: .leading, spacing: 8) {
-        TextField(firstTitle, text: $firstText)
-        TextField(secondTitle, text: $secondText)
+        ContactFormField(title: firstTitle, text: $firstText)
+        ContactFormField(title: secondTitle, text: $secondText)
       }
     }
   }
@@ -626,16 +753,39 @@ private struct ContactFieldTriple: View {
   var body: some View {
     ViewThatFits(in: .horizontal) {
       HStack {
-        TextField(firstTitle, text: $firstText)
-        TextField(secondTitle, text: $secondText)
-        TextField(thirdTitle, text: $thirdText)
+        ContactFormField(title: firstTitle, text: $firstText)
+        ContactFormField(title: secondTitle, text: $secondText)
+        ContactFormField(title: thirdTitle, text: $thirdText)
       }
       VStack(alignment: .leading, spacing: 8) {
-        TextField(firstTitle, text: $firstText)
-        TextField(secondTitle, text: $secondText)
-        TextField(thirdTitle, text: $thirdText)
+        ContactFormField(title: firstTitle, text: $firstText)
+        ContactFormField(title: secondTitle, text: $secondText)
+        ContactFormField(title: thirdTitle, text: $thirdText)
       }
     }
+  }
+}
+
+private struct ContactFormField: View {
+  let title: String
+  @Binding var text: String
+  var isMultiline = false
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 5) {
+      Text(title.uppercased())
+        .font(.caption2.weight(.semibold))
+        .foregroundStyle(.secondary)
+      if isMultiline {
+        TextField(title, text: $text, axis: .vertical)
+          .lineLimit(2...4)
+          .accessibilityLabel(title)
+      } else {
+        TextField(title, text: $text)
+          .accessibilityLabel(title)
+      }
+    }
+    .frame(maxWidth: .infinity, alignment: .leading)
   }
 }
 
@@ -646,6 +796,9 @@ private struct ContactContextField: View {
   var body: some View {
     VStack(alignment: .leading, spacing: 6) {
       HStack {
+        Text("CONTEXT")
+          .font(.caption2.weight(.semibold))
+          .foregroundStyle(.secondary)
         Spacer()
         ImproveTextControl(
           currentText: text,
@@ -666,9 +819,12 @@ private struct ContactDetailPanel: View {
   @EnvironmentObject private var store: JobmaxxingStore
   let contact: ContactRecord
   let openCompany: (String) -> Void
+  let back: () -> Void
   let enhance: () -> Void
   @State private var draft: ContactRecord?
   @State private var actionStatus = ""
+  @State private var confirmsBack = false
+  @State private var confirmsEnhance = false
 
   private var editable: Binding<ContactRecord> {
     Binding(
@@ -684,6 +840,17 @@ private struct ContactDetailPanel: View {
 
   var body: some View {
     VStack(alignment: .leading, spacing: 14) {
+      Button {
+        if hasChanges {
+          confirmsBack = true
+        } else {
+          back()
+        }
+      } label: {
+        Label("Back to people", systemImage: "chevron.left")
+      }
+      .buttonStyle(.bordered)
+
       ViewThatFits(in: .horizontal) {
         HStack(alignment: .top, spacing: 12) {
           detailTitle
@@ -726,6 +893,41 @@ private struct ContactDetailPanel: View {
     }
     .onAppear { draft = contact }
     .onChange(of: contact) { _, newContact in draft = newContact }
+    .onDisappear {
+      if hasChanges {
+        saveDraft()
+      }
+    }
+    .confirmationDialog(
+      "Save contact edits before leaving?",
+      isPresented: $confirmsBack,
+      titleVisibility: .visible
+    ) {
+      Button("Save and go back") {
+        saveDraft()
+        back()
+      }
+      Button("Discard edits", role: .destructive) {
+        draft = contact
+        back()
+      }
+      Button("Cancel", role: .cancel) {}
+    }
+    .confirmationDialog(
+      "Save contact edits before preparing the profile plan?",
+      isPresented: $confirmsEnhance,
+      titleVisibility: .visible
+    ) {
+      Button("Save and prepare") {
+        saveDraft()
+        enhance()
+      }
+      Button("Discard edits and prepare", role: .destructive) {
+        draft = contact
+        enhance()
+      }
+      Button("Cancel", role: .cancel) {}
+    }
   }
 
   private var detailSubtitle: String {
@@ -755,24 +957,32 @@ private struct ContactDetailPanel: View {
 
   private var enhanceButton: some View {
     Button {
-      enhance()
+      if hasChanges {
+        confirmsEnhance = true
+      } else {
+        enhance()
+      }
     } label: {
-      Label("Enhance profile", systemImage: "sparkles")
+      Label("Prepare profile plan", systemImage: "list.bullet.clipboard")
     }
     .buttonStyle(.borderedProminent)
   }
 
   private var saveButton: some View {
     Button {
-      if let draft {
-        store.updateContact(draft)
-        actionStatus = "Saved \(draft.name)."
-      }
+      saveDraft()
     } label: {
       Label("Save changes", systemImage: "checkmark")
     }
     .buttonStyle(.borderedProminent)
     .disabled(!hasChanges)
+  }
+
+  private func saveDraft() {
+    guard let draft else { return }
+    store.updateContact(draft)
+    actionStatus = "Saved \(draft.name)."
+    self.draft = draft
   }
 
   private func openCompanyButton(companyID: String) -> some View {
@@ -876,7 +1086,7 @@ private struct ProfileList: View {
       Label(title, systemImage: systemImage)
         .font(.caption.weight(.bold))
         .foregroundStyle(.secondary)
-      ForEach(items, id: \.self) { item in
+      ForEach(Array(items.enumerated()), id: \.offset) { _, item in
         HStack(alignment: .top, spacing: 7) {
           Image(systemName: "minus")
             .font(.caption2.weight(.semibold))
@@ -924,7 +1134,7 @@ private struct ContactSourceChip: View {
         Link(destination: url) {
           label
         }
-        .buttonStyle(.plain)
+        .buttonStyle(LiquidPressButtonStyle())
       } else {
         label
       }
@@ -985,26 +1195,29 @@ struct ContactSourceLabel: Hashable {
     if host.contains("workdayjobs.com") {
       return "Workday careers"
     }
-    if path.hasSuffix(".pdf") {
-      return "Company PDF"
-    }
-    if path.contains("careers") || path.contains("working-at") || path.contains("jobs") {
-      return "Company careers"
-    }
-    if path.contains("news") {
-      return "Company news"
-    }
-    if path.contains("leadership") {
-      return "Company leadership"
-    }
-    if path.contains("history") {
-      return "Company history"
-    }
-    if path.contains("corporate-social") || path.contains("responsibilities") {
-      return "Company CSR"
-    }
-    if path.contains("products") || path.contains("solutions") {
-      return "Company products"
+    if host.contains("exampleco.com") {
+      if path.hasSuffix(".pdf") {
+        return "ExampleCo PDF"
+      }
+      if path.contains("working-at-exampleco") {
+        return "ExampleCo careers"
+      }
+      if path.contains("exampleco-news") {
+        return "ExampleCo news"
+      }
+      if path.contains("leadership") {
+        return "ExampleCo leadership"
+      }
+      if path.contains("history") {
+        return "ExampleCo history"
+      }
+      if path.contains("corporate-social") || path.contains("responsibilities") {
+        return "ExampleCo CSR"
+      }
+      if path.contains("products") || path.contains("solutions") {
+        return "ExampleCo products"
+      }
+      return "ExampleCo"
     }
     return host
   }
@@ -1054,6 +1267,16 @@ private struct ContactEditFields: View {
           "Email: \(contact.email)"
         ].joined(separator: "\n")
       )
+      DisclosureGroup("More details") {
+        VStack(alignment: .leading, spacing: 10) {
+          ContactFieldPair(firstTitle: "Location", firstText: $contact.location, secondTitle: "Relationship", secondText: $contact.relationship)
+          ContactFieldPair(firstTitle: "Source URL", firstText: $contact.sourceURL, secondTitle: "How you met", secondText: $contact.howMet)
+          ContactFormField(title: "Relevant job or remit", text: $contact.jobDescription, isMultiline: true)
+          ContactFormField(title: "Personal context", text: $contact.personalNotes, isMultiline: true)
+          ContactFormField(title: "Projects or shared work", text: $contact.projectNotes, isMultiline: true)
+        }
+        .padding(.top, 8)
+      }
     }
   }
 }
@@ -1062,6 +1285,7 @@ private struct ContactWhatsAppThreadPanel: View {
   @EnvironmentObject private var store: JobmaxxingStore
   let contact: ContactRecord
   @Binding var status: String
+  @State private var isRefreshing = false
 
   private var profile: WhatsAppThreadProfile? {
     store.contacts.first(where: { $0.id == contact.id })?.communicationProfile?.whatsApp
@@ -1144,11 +1368,23 @@ private struct ContactWhatsAppThreadPanel: View {
   private var whatsAppActions: some View {
     HStack {
       Button {
-        status = store.refreshWhatsAppThread(contactID: contact.id)
+        Task {
+          guard !isRefreshing else { return }
+          isRefreshing = true
+          defer { isRefreshing = false }
+          status = await store.refreshWhatsAppThread(contactID: contact.id)
+        }
       } label: {
-        Label("Refresh thread", systemImage: "arrow.clockwise")
+        if isRefreshing {
+          ProgressView()
+            .controlSize(.small)
+            .frame(minWidth: 44, minHeight: 44)
+        } else {
+          Label("Refresh thread", systemImage: "arrow.clockwise")
+        }
       }
       .buttonStyle(.bordered)
+      .disabled(isRefreshing)
       Button {
         status = store.draftWhatsAppReply(contactID: contact.id)
       } label: {
@@ -1181,7 +1417,7 @@ private struct WhatsAppMessageRow: View {
   }
 
   private var sender: some View {
-    Text(message.isFromMe ? "the user" : contactName)
+    Text(message.isFromMe ? "User" : contactName)
       .font(.caption.weight(.semibold))
       .foregroundStyle(.secondary)
       .lineLimit(1)
@@ -1208,7 +1444,7 @@ private struct ContactCompanyPicker: View {
     }
     .onAppear {
       if selectedCompanyID.isEmpty {
-        selectedCompanyID = store.companyProfiles.first?.id ?? ""
+        selectedCompanyID = store.companyProfiles.first(where: { $0.id == "exampleco" })?.id ?? store.companyProfiles.first?.id ?? ""
       }
     }
   }
@@ -1218,7 +1454,6 @@ private struct ContactAgentPanel: View {
   @EnvironmentObject private var store: JobmaxxingStore
   let contact: ContactRecord
   @State private var draft = ""
-  @State private var modelTier = "Medium"
   @State private var status = ""
 
   private var messages: [HermesChatMessage] {
@@ -1227,37 +1462,36 @@ private struct ContactAgentPanel: View {
 
   var body: some View {
     VStack(alignment: .leading, spacing: 12) {
-      HStack(spacing: 8) {
-        Image(systemName: "sparkles")
-        Text("Agent")
-          .font(.caption.weight(.bold))
-        Spacer()
-        Picker("Model", selection: $modelTier) {
-          Text("Medium").tag("Medium")
-          Text("High").tag("High")
+      VStack(alignment: .leading, spacing: 4) {
+        HStack(spacing: 8) {
+          Image(systemName: "wrench.and.screwdriver")
+          Text("Local tools")
+            .font(.caption.weight(.bold))
+          Spacer()
         }
-        .labelsHidden()
-        .frame(width: 116)
+        Text("Uses saved data to prepare drafts and review plans. It does not run a model, search, or browser automatically.")
+          .font(.caption)
+          .foregroundStyle(.secondary)
       }
       .foregroundStyle(.secondary)
 
       LazyVGrid(columns: [GridItem(.adaptive(minimum: 150), spacing: 8)], alignment: .leading, spacing: 8) {
-        ContactAgentAction(title: "Deep profile", systemImage: "person.text.rectangle") {
+        ContactAgentAction(title: "Profile plan", systemImage: "person.text.rectangle") {
           run("deep-profile")
         }
-        ContactAgentAction(title: "Find email", systemImage: "envelope") {
+        ContactAgentAction(title: "Check saved email", systemImage: "envelope") {
           run("find-email")
         }
         ContactAgentAction(title: "Draft follow-up", systemImage: "text.bubble") {
           run("draft-follow-up")
         }
-        ContactAgentAction(title: "Chrome research", systemImage: "safari") {
+        ContactAgentAction(title: "Open research target", systemImage: "safari") {
           run("chrome-research")
         }
       }
 
       if messages.isEmpty {
-        EmptyPanel(title: "No agent messages", detail: "Run a profile, email, or follow-up action.")
+        EmptyPanel(title: "No local results", detail: "Prepare a profile plan, check saved email, or draft a follow-up.")
       } else {
         ScrollView {
           LazyVStack(alignment: .leading, spacing: 10) {
@@ -1281,7 +1515,7 @@ private struct ContactAgentPanel: View {
               "Email: \(contact.email)",
               "Notes: \(contact.notes.bounded(to: 500))"
             ].joined(separator: "\n"),
-            kind: "agent request",
+            kind: "local planning request",
             onApply: { draft = $0 }
           )
         }
@@ -1290,13 +1524,12 @@ private struct ContactAgentPanel: View {
           .frame(minHeight: 88)
           .scrollContentBackground(.hidden)
           .padding(8)
-          .background(.background)
-          .overlay(RoundedRectangle(cornerRadius: 6).stroke(.separator))
+          .liquidGlassSurface(.strong, cornerRadius: AppTheme.radiusSmall, isInteractive: true)
         HStack {
           Button {
             send()
           } label: {
-            Label("Ask agent", systemImage: "arrow.up.circle.fill")
+            Label("Prepare", systemImage: "arrow.up.circle.fill")
           }
           .buttonStyle(.borderedProminent)
           .disabled(draft.trimmed.isEmpty)
@@ -1311,18 +1544,16 @@ private struct ContactAgentPanel: View {
       }
     }
     .padding(14)
-    .background(AppTheme.panel)
-    .clipShape(RoundedRectangle(cornerRadius: 6))
-    .overlay(RoundedRectangle(cornerRadius: 6).stroke(.separator, lineWidth: 1))
+    .liquidGlassSurface(.regular, cornerRadius: AppTheme.radiusMedium)
   }
 
   private func send() {
-    status = store.sendContactAgentMessage(contactID: contact.id, text: draft, modelTier: modelTier)
+    status = store.sendContactAgentMessage(contactID: contact.id, text: draft, modelTier: "Local")
     draft = ""
   }
 
   private func run(_ action: String) {
-    status = store.runContactQuickAction(contactID: contact.id, action: action, modelTier: modelTier)
+    status = store.runContactQuickAction(contactID: contact.id, action: action, modelTier: "Local")
     if action == "chrome-research" {
       status = [status, openChromeResearchTarget().message]
         .map(\.trimmed)
@@ -1379,7 +1610,7 @@ private struct ContactAgentMessageRow: View {
       }
       .padding(10)
       .frame(maxWidth: .infinity, alignment: .leading)
-      .background(isUser ? Color.accentColor.opacity(0.10) : Color(nsColor: .textBackgroundColor))
+      .background(isUser ? AppTheme.accent.opacity(0.12) : AppTheme.opaqueSurface)
       .overlay(RoundedRectangle(cornerRadius: 6).stroke(.separator))
       if !isUser {
         Spacer(minLength: 36)
@@ -1414,7 +1645,7 @@ private struct ContactCompactTraceDisclosure: View {
         .frame(maxWidth: .infinity, minHeight: 24, alignment: .leading)
         .contentShape(Rectangle())
       }
-      .buttonStyle(.plain)
+      .buttonStyle(LiquidPressButtonStyle())
 
       if expanded {
         VStack(alignment: .leading, spacing: 6) {
@@ -1469,6 +1700,7 @@ struct AgentManagerPanel: View {
           Button(action: action) {
             Label(actionTitle, systemImage: actionSystemImage)
               .labelStyle(.iconOnly)
+              .frame(width: 44, height: 44)
           }
           .buttonStyle(.bordered)
           .help(actionTitle)
@@ -1477,7 +1709,7 @@ struct AgentManagerPanel: View {
       .foregroundStyle(.secondary)
 
       if runs.isEmpty {
-        EmptyPanel(title: "No agents", detail: "Run Enhance.")
+        EmptyPanel(title: "No local plans", detail: "Prepare a profile or research plan to see its saved inputs and next steps.")
       } else {
         VStack(spacing: 0) {
           ForEach(runs) { run in
@@ -1490,9 +1722,7 @@ struct AgentManagerPanel: View {
       }
     }
     .padding(14)
-    .background(AppTheme.panel)
-    .clipShape(RoundedRectangle(cornerRadius: 6))
-    .overlay(RoundedRectangle(cornerRadius: 6).stroke(.separator, lineWidth: 1))
+    .liquidGlassSurface(.regular, cornerRadius: AppTheme.radiusMedium)
   }
 }
 
@@ -1530,7 +1760,7 @@ private struct AgentRunRow: View {
         .frame(maxWidth: .infinity, minHeight: 28, alignment: .leading)
         .contentShape(Rectangle())
       }
-      .buttonStyle(.plain)
+      .buttonStyle(LiquidPressButtonStyle())
 
       if isTraceOpen {
         VStack(alignment: .leading, spacing: 8) {

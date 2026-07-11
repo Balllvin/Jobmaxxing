@@ -1,35 +1,48 @@
 import SwiftUI
 
+struct ApplicationIntakeDraft: Equatable {
+  var company = ""
+  var role = ""
+  var sourceURL = ""
+  var description = ""
+  var isExpanded = false
+}
+
 struct ApplicationsView: View {
   @EnvironmentObject private var store: JobmaxxingStore
   let openCompany: (String) -> Void
+  @Binding var intakeDraft: ApplicationIntakeDraft
   @State private var company = ""
   @State private var role = ""
   @State private var sourceURL = ""
   @State private var description = ""
   @State private var isAddingRole = false
+  @State private var roleStatus = ""
+  @Binding var noteDrafts: [String: String]
 
   var body: some View {
     GeometryReader { proxy in
-      if proxy.size.width < 760 {
-        VStack(spacing: 0) {
-          rolePane(compact: true)
-          Divider()
-          ApplicationDetailView(openCompany: openCompany, compact: true)
-            .padding(14)
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        }
-      } else {
-        HSplitView {
-          rolePane(compact: false)
-
-          ApplicationDetailView(openCompany: openCompany, compact: false)
-            .padding(16)
-            .frame(minWidth: 360)
-            .frame(maxHeight: .infinity, alignment: .top)
-        }
+      let compact = proxy.size.width < 760
+      let layout = compact
+        ? AnyLayout(VStackLayout(spacing: 0))
+        : AnyLayout(HStackLayout(alignment: .top, spacing: 0))
+      layout {
+        rolePane(compact: compact)
+        Divider()
+        ApplicationDetailView(
+          openCompany: openCompany,
+          compact: compact,
+          noteDrafts: $noteDrafts
+        )
+          .padding(compact ? 14 : 16)
+          .frame(minWidth: compact ? 0 : 360)
+          .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
       }
+      .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+      .clipped()
     }
+    .onAppear(perform: restoreIntakeDraft)
+    .onDisappear(perform: preserveIntakeDraft)
   }
 
   private func rolePane(compact: Bool) -> some View {
@@ -43,12 +56,15 @@ struct ApplicationsView: View {
             EmptyApplicationState(title: "Add a role.")
           }
           ForEach(store.state.jobs) { job in
-            ApplicationListRow(job: job, isSelected: store.selectedJobID == job.id)
-              .onTapGesture {
-                store.selectedJobID = job.id
-              }
-              .accessibilityAddTraits(.isButton)
+            Button {
+              store.selectedJobID = job.id
+            } label: {
+              ApplicationListRow(job: job, isSelected: store.selectedJobID == job.id)
+            }
+              .buttonStyle(LiquidPressButtonStyle())
               .accessibilityLabel("\(job.role), \(job.company)")
+              .accessibilityValue(store.selectedJobID == job.id ? "Selected" : "")
+              .accessibilityHint("Opens the application dossier")
           }
         }
       }
@@ -64,23 +80,23 @@ struct ApplicationsView: View {
 
   private var addRoleForm: some View {
     VStack(alignment: .leading, spacing: 8) {
-      HStack(spacing: 6) {
-        Image(systemName: isAddingRole ? "chevron.down" : "chevron.right")
-          .font(.caption.weight(.semibold))
-          .foregroundStyle(.secondary)
-          .frame(width: 10)
-        Text("Add role")
-          .font(.body.weight(.medium))
-          .foregroundStyle(.primary)
-        Spacer(minLength: 0)
-      }
-      .contentShape(Rectangle())
-      .onTapGesture {
-        withAnimation(.easeInOut(duration: 0.14)) {
-          isAddingRole.toggle()
+      Button {
+        isAddingRole.toggle()
+      } label: {
+        HStack(spacing: 8) {
+          Image(systemName: isAddingRole ? "chevron.down" : "chevron.right")
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(.secondary)
+            .frame(width: 12)
+          Text("Add role")
+            .font(.body.weight(.medium))
+            .foregroundStyle(.primary)
+          Spacer(minLength: 0)
         }
+        .frame(minHeight: 44)
+        .contentShape(Rectangle())
       }
-      .accessibilityAddTraits(.isButton)
+      .buttonStyle(LiquidPressButtonStyle())
       .accessibilityLabel(isAddingRole ? "Collapse add role" : "Expand add role")
 
       if isAddingRole {
@@ -102,6 +118,13 @@ struct ApplicationsView: View {
           }
           .buttonStyle(.borderedProminent)
           .disabled(company.trimmed.isEmpty || role.trimmed.isEmpty || description.trimmed.isEmpty)
+
+          if !roleStatus.isEmpty {
+            Text(roleStatus)
+              .font(.caption)
+              .foregroundStyle(.secondary)
+              .accessibilityLabel(roleStatus)
+          }
         }
         .padding(.leading, 16)
       }
@@ -114,6 +137,26 @@ struct ApplicationsView: View {
     role = ""
     sourceURL = ""
     description = ""
+    roleStatus = "Role saved. Review its score and evidence before applying."
+    preserveIntakeDraft()
+  }
+
+  private func restoreIntakeDraft() {
+    company = intakeDraft.company
+    role = intakeDraft.role
+    sourceURL = intakeDraft.sourceURL
+    description = intakeDraft.description
+    isAddingRole = intakeDraft.isExpanded
+  }
+
+  private func preserveIntakeDraft() {
+    intakeDraft = ApplicationIntakeDraft(
+      company: company,
+      role: role,
+      sourceURL: sourceURL,
+      description: description,
+      isExpanded: isAddingRole
+    )
   }
 }
 
@@ -153,7 +196,7 @@ private struct ApplicationDetailView: View {
   @EnvironmentObject private var store: JobmaxxingStore
   let openCompany: (String) -> Void
   let compact: Bool
-  @State private var localNotes = ""
+  @Binding var noteDrafts: [String: String]
 
   private var selectedCompany: CompanyProfile? {
     guard let job = store.selectedJob else { return nil }
@@ -211,19 +254,24 @@ private struct ApplicationDetailView: View {
             HStack {
               Spacer()
               ImproveTextControl(
-                currentText: localNotes,
+                currentText: noteText(for: job),
                 context: "Company: \(job.company)\nRole: \(job.role)\nDescription: \(job.description.bounded(to: 600))",
                 kind: "application notes",
-                onApply: { localNotes = $0 }
+                onApply: { noteDrafts[job.id] = $0 }
               )
             }
-            TextEditor(text: $localNotes)
+            TextEditor(text: noteBinding(for: job))
               .frame(minHeight: 90)
-              .onAppear { localNotes = job.notes }
-              .onChange(of: job.id) { _, _ in localNotes = job.notes }
+              .scrollContentBackground(.hidden)
+              .padding(8)
+              .liquidGlassSurface(.strong, cornerRadius: AppTheme.radiusSmall, isInteractive: true)
+              .accessibilityLabel("Application notes")
             Button("Save notes") {
-              store.updateNotes(jobID: job.id, notes: localNotes)
+              let notes = noteText(for: job)
+              store.updateNotes(jobID: job.id, notes: notes)
+              noteDrafts[job.id] = notes
             }
+            .disabled(noteText(for: job) == job.notes)
           }
 
         }
@@ -234,6 +282,17 @@ private struct ApplicationDetailView: View {
       EmptyApplicationState(title: "Select a role.")
         .padding(18)
     }
+  }
+
+  private func noteText(for job: JobRecord) -> String {
+    noteDrafts[job.id] ?? job.notes
+  }
+
+  private func noteBinding(for job: JobRecord) -> Binding<String> {
+    Binding(
+      get: { noteText(for: job) },
+      set: { noteDrafts[job.id] = $0 }
+    )
   }
 
   private func stageMenu(for job: JobRecord) -> some View {
@@ -253,9 +312,8 @@ private struct ApplicationDetailView: View {
       .foregroundStyle(.secondary)
     }
     .menuStyle(.borderlessButton)
-    .buttonStyle(.plain)
+    .buttonStyle(LiquidPressButtonStyle())
     .controlSize(.small)
-    .focusable(false)
   }
 
   @ViewBuilder
@@ -267,13 +325,11 @@ private struct ApplicationDetailView: View {
         Label(applicationDraftActionTitle(hasDraft: false), systemImage: "wand.and.stars")
       }
       .buttonStyle(.borderedProminent)
-      .focusable(false)
     }
   }
 
   private func openApplicationCompany(_ company: CompanyProfile) {
     store.selectedCompanyID = company.id
-    store.prepareCompanyResearch(companyID: company.id)
     openCompany(company.id)
   }
 }
@@ -347,7 +403,6 @@ private struct ApplicationSourceStrip: View {
       if let source = ExternalURL.normalizedWebURL(job.sourceURL) {
         Link("Job post", destination: source)
           .help(source.absoluteString)
-          .focusable(false)
       } else {
         Text("No job post")
           .foregroundStyle(.secondary)
@@ -362,7 +417,6 @@ private struct ApplicationSourceStrip: View {
       if let hiringURL = ExternalURL.normalizedWebURL(linkedInPeopleSearch(company: job.company, role: job.role)) {
         Link("Hiring people", destination: hiringURL)
           .help(hiringURL.absoluteString)
-          .focusable(false)
       }
     }
   }
@@ -382,8 +436,7 @@ private struct ApplicationTextAction: View {
       Text(title)
         .foregroundStyle(Color.accentColor)
     }
-    .buttonStyle(.plain)
-    .focusable(false)
+    .buttonStyle(LiquidPressButtonStyle())
   }
 }
 
@@ -409,6 +462,9 @@ private struct ApplicationDocumentsPanel: View {
   @State private var importError = ""
   @State private var proofMetadata = ""
   @State private var taskStatus = ""
+  @State private var documentSearch = ""
+  @State private var showsAllDocuments = false
+  @State private var isImportingFiles = false
 
   private var selectedDocument: CandidateDocument? {
     store.selectedDocument ?? store.state.documents.first
@@ -421,8 +477,17 @@ private struct ApplicationDocumentsPanel: View {
         Button {
           importing = true
         } label: {
-          Label("Import files", systemImage: "plus")
+          HStack(spacing: 7) {
+            if isImportingFiles {
+              ProgressView()
+                .controlSize(.small)
+            } else {
+              Image(systemName: "plus")
+            }
+            Text(isImportingFiles ? "Importing…" : "Import files")
+          }
         }
+        .disabled(isImportingFiles)
       }
 
       if !importError.trimmed.isEmpty {
@@ -431,25 +496,42 @@ private struct ApplicationDocumentsPanel: View {
           .foregroundStyle(.red)
       }
 
+      DocumentIndexFeedback(status: store.state.documentIndexStatus)
+
       if store.state.documents.isEmpty {
         EmptyApplicationState(title: "Import a CV, letter, transcript, or proof file.")
       } else {
         VStack(alignment: .leading, spacing: 8) {
-          ForEach(store.state.documents.prefix(4)) { document in
-            ApplicationDocumentRow(document: document, isSelected: store.selectedDocumentID == document.id)
-              .onTapGesture {
-                store.selectedDocumentID = document.id
-                proofMetadata = defaultProofMetadata(document: document, job: job)
-                taskStatus = ""
-              }
-              .accessibilityAddTraits(.isButton)
-              .accessibilityLabel(document.title)
+          TextField("Find a document", text: $documentSearch)
+            .textFieldStyle(.roundedBorder)
+            .accessibilityLabel("Find a document")
+
+          if visibleDocuments.isEmpty {
+            EmptyApplicationState(title: "No documents match this search.")
           }
 
-          if store.state.documents.count > 4 {
-            Text("\(store.state.documents.count - 4) more file(s) in the document library.")
-              .font(.caption)
-              .foregroundStyle(.secondary)
+          ForEach(visibleDocuments) { document in
+            Button {
+              store.selectedDocumentID = document.id
+              proofMetadata = defaultProofMetadata(document: document, job: job)
+              taskStatus = ""
+            } label: {
+              ApplicationDocumentRow(document: document, isSelected: store.selectedDocumentID == document.id)
+            }
+              .buttonStyle(LiquidPressButtonStyle())
+              .accessibilityLabel(document.title)
+              .accessibilityValue(store.selectedDocumentID == document.id ? "Selected" : "")
+              .accessibilityHint("Shows document actions and proof details")
+          }
+
+          if documentSearch.trimmed.isEmpty && filteredDocuments.count > 4 {
+            Button(showsAllDocuments ? "Show fewer" : "Show all \(filteredDocuments.count) documents") {
+              showsAllDocuments.toggle()
+            }
+            .buttonStyle(LiquidPressButtonStyle())
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(.secondary)
+            .frame(minHeight: 44)
           }
 
           if let selectedDocument {
@@ -478,15 +560,34 @@ private struct ApplicationDocumentsPanel: View {
       allowedContentTypes: DocumentImportTypes.allowed,
       allowsMultipleSelection: true
     ) { result in
-      do {
-        let urls = try result.get()
-        try store.importDocuments(from: urls)
-        proofMetadata = store.selectedDocument.map { defaultProofMetadata(document: $0, job: job) } ?? ""
-        importError = ""
-      } catch {
-        importError = error.localizedDescription
+      Task { @MainActor in
+        isImportingFiles = true
+        defer { isImportingFiles = false }
+        do {
+          let urls = try result.get()
+          let outcome = try await store.importDocuments(from: urls)
+          proofMetadata = store.selectedDocument.map { defaultProofMetadata(document: $0, job: job) } ?? ""
+          importError = outcome.failures.isEmpty ? "" : outcome.summary
+        } catch {
+          importError = error.localizedDescription
+        }
       }
     }
+  }
+
+  private var filteredDocuments: [CandidateDocument] {
+    let query = documentSearch.trimmed
+    guard !query.isEmpty else { return store.state.documents }
+    return store.state.documents.filter { document in
+      [document.title, document.fileName, document.kind, document.summary]
+        .joined(separator: " ")
+        .localizedCaseInsensitiveContains(query)
+    }
+  }
+
+  private var visibleDocuments: [CandidateDocument] {
+    guard documentSearch.trimmed.isEmpty, !showsAllDocuments else { return filteredDocuments }
+    return Array(filteredDocuments.prefix(4))
   }
 }
 
@@ -540,6 +641,25 @@ private struct ApplicationSelectedDocument: View {
         VStack(alignment: .leading, spacing: 8) {
           documentActions
         }
+      }
+
+      DisclosureGroup("Extracted text") {
+        Group {
+          if document.extractedText.trimmed.isEmpty {
+            Text("No text was extracted from this file. The original file remains attached and can still be opened or saved as proof.")
+              .foregroundStyle(.secondary)
+          } else {
+            ScrollView {
+              Text(document.extractedText)
+                .font(.system(.caption, design: .monospaced))
+                .textSelection(.enabled)
+                .frame(maxWidth: .infinity, alignment: .topLeading)
+            }
+            .frame(minHeight: 120, maxHeight: 260)
+          }
+        }
+        .font(.caption)
+        .padding(.top, 6)
       }
 
       DisclosureGroup("Save as proof") {
@@ -627,8 +747,7 @@ private struct DraftView: View {
             .font(.caption.weight(.semibold))
             .foregroundStyle(.secondary)
         }
-        .buttonStyle(.plain)
-        .focusable(false)
+        .buttonStyle(LiquidPressButtonStyle())
         ImproveTextControl(
           currentText: draft.headline,
           context: draftContext,

@@ -102,7 +102,7 @@ private struct SetupActionButton: View {
         .padding(.vertical, 6)
         .contentShape(RoundedRectangle(cornerRadius: 5))
     }
-    .buttonStyle(.plain)
+    .buttonStyle(LiquidPressButtonStyle())
     .background(AppTheme.hoverFill)
     .clipShape(RoundedRectangle(cornerRadius: 5))
     .overlay(
@@ -130,7 +130,7 @@ struct CodeHelpSettingsPage: View {
       transcript
       composer
     }
-    .background(AppTheme.canvas)
+    .background(Color.clear)
   }
 
   private var header: some View {
@@ -160,6 +160,7 @@ struct CodeHelpSettingsPage: View {
         .fill(Color(nsColor: .separatorColor).opacity(0.7))
         .frame(height: 1)
     }
+    .background(.bar)
   }
 
   private var headerDetail: String {
@@ -200,13 +201,13 @@ struct CodeHelpSettingsPage: View {
         .frame(maxWidth: .infinity, alignment: .topLeading)
       }
       .onAppear {
-        scrollToBottom(with: proxy, animated: false)
+        scrollToBottom(with: proxy)
       }
       .onChange(of: chat.messages.last?.id) { _, _ in
-        scrollToBottom(with: proxy, animated: true)
+        scrollToBottom(with: proxy)
       }
-      .onChange(of: chat.messages.last?.text) { _, _ in
-        scrollToBottom(with: proxy, animated: true)
+      .onChange(of: (chat.messages.last?.text.count ?? 0) / 160) { _, _ in
+        scrollToBottom(with: proxy)
       }
     }
     .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -236,12 +237,7 @@ struct CodeHelpSettingsPage: View {
         }
         .padding(.horizontal, 10)
         .frame(height: composerHeight)
-        .background(.regularMaterial)
-        .clipShape(RoundedRectangle(cornerRadius: 8))
-        .overlay(
-          RoundedRectangle(cornerRadius: 8)
-            .stroke(Color(nsColor: .separatorColor).opacity(0.75), lineWidth: 1)
-        )
+        .liquidGlassSurface(.strong, cornerRadius: AppTheme.radiusMedium, isInteractive: true)
 
         CodeHelpSendButton(isEnabled: canSend) {
           send()
@@ -251,6 +247,7 @@ struct CodeHelpSettingsPage: View {
     .padding(.horizontal, 18)
     .padding(.top, 8)
     .padding(.bottom, 14)
+    .background(.bar)
   }
 
   private var canSend: Bool {
@@ -273,21 +270,9 @@ struct CodeHelpSettingsPage: View {
     copyStatus = "Copied."
   }
 
-  private func scrollToBottom(with proxy: ScrollViewProxy, animated: Bool) {
-    let action = {
+  private func scrollToBottom(with proxy: ScrollViewProxy) {
+    DispatchQueue.main.async {
       proxy.scrollTo(Self.transcriptBottomID, anchor: .bottom)
-    }
-    if animated {
-      withAnimation(.easeOut(duration: 0.18)) {
-        action()
-      }
-    } else {
-      DispatchQueue.main.async {
-        action()
-      }
-      DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-        action()
-      }
     }
   }
 
@@ -327,8 +312,9 @@ private struct CodeHelpReplyPreview: View {
       Button(action: onClear) {
         Image(systemName: "xmark")
           .font(.caption2.weight(.bold))
+          .frame(width: 44, height: 44)
       }
-      .buttonStyle(.plain)
+      .buttonStyle(LiquidPressButtonStyle())
       .accessibilityLabel("Clear reply")
       .help("Clear reply")
     }
@@ -347,17 +333,17 @@ private struct CodeHelpSendButton: View {
     Button(action: action) {
       Image(systemName: "paperplane.fill")
         .font(.system(size: 14, weight: .semibold))
-        .frame(width: 36, height: 36)
-        .contentShape(RoundedRectangle(cornerRadius: 6))
+        .frame(width: 44, height: 44)
+        .contentShape(RoundedRectangle(cornerRadius: AppTheme.radiusSmall))
     }
-    .buttonStyle(.plain)
+    .buttonStyle(LiquidPressButtonStyle())
     .accessibilityLabel("Send question")
     .help("Send question")
     .foregroundStyle(isEnabled ? Color.white : Color.secondary)
     .background(isEnabled ? Color.accentColor : Color.clear)
-    .clipShape(RoundedRectangle(cornerRadius: 6))
+    .clipShape(RoundedRectangle(cornerRadius: AppTheme.radiusSmall))
     .overlay(
-      RoundedRectangle(cornerRadius: 6)
+      RoundedRectangle(cornerRadius: AppTheme.radiusSmall)
         .stroke(isEnabled ? Color.accentColor : Color(nsColor: .separatorColor).opacity(0.4), lineWidth: 1)
     )
     .disabled(!isEnabled)

@@ -24,8 +24,8 @@ struct JobmaxxingApp: App {
     Settings {
       SettingsView()
         .environmentObject(store)
-        .frame(minWidth: 980, minHeight: 640)
-        .frame(idealWidth: 1100, idealHeight: 720)
+        .frame(minWidth: JobmaxxingWindowLayout.minimumSize.width, minHeight: JobmaxxingWindowLayout.minimumSize.height)
+        .frame(idealWidth: 1040, idealHeight: 700)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
   }
@@ -71,7 +71,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 }
 
 enum JobmaxxingWindowLayout {
-  static let minimumSize = NSSize(width: 1180, height: 760)
+  static let minimumSize = NSSize(width: 820, height: 620)
 
   /// Restores unusable launch frames without shrinking a healthy user-sized window.
   /// Shrinks only when the frame cannot fit the visible screen. Moves only when the

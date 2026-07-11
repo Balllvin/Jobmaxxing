@@ -36,9 +36,9 @@ final class TextImproveSupportTests: XCTestCase {
   func testBulletsFromMultilineText() {
     let bullets = TextImproveSupport.bullets(from: """
     - Built Jobmaxxing
-    • Shipped Example Agent Plane
+    • Shipped Smaug
     plain line
     """)
-    XCTAssertEqual(bullets, ["Built Jobmaxxing", "Shipped Example Agent Plane", "plain line"])
+    XCTAssertEqual(bullets, ["Built Jobmaxxing", "Shipped Smaug", "plain line"])
   }
 }

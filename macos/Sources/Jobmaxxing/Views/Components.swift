@@ -2,64 +2,6 @@ import SwiftUI
 import AppKit
 import UniformTypeIdentifiers
 
-enum AppTheme {
-  static let canvas = Color(nsColor: .windowBackgroundColor)
-  static let panel = Color(nsColor: .controlBackgroundColor)
-  static let selectedFill = Color.primary.opacity(0.08)
-  static let selectedStroke = Color.primary.opacity(0.18)
-  static let hoverFill = Color.primary.opacity(0.045)
-}
-
-struct SelectedRowSurface: ViewModifier {
-  let isSelected: Bool
-  var cornerRadius: CGFloat = 6
-
-  func body(content: Content) -> some View {
-    content
-      .background(isSelected ? AppTheme.selectedFill : Color.clear)
-      .clipShape(RoundedRectangle(cornerRadius: cornerRadius))
-      .overlay(
-        RoundedRectangle(cornerRadius: cornerRadius)
-          .stroke(isSelected ? AppTheme.selectedStroke : Color.clear, lineWidth: 1)
-      )
-  }
-}
-
-struct FocusRingSuppressor: NSViewRepresentable {
-  func makeNSView(context: Context) -> NSView {
-    FocusRingSuppressingView()
-  }
-
-  func updateNSView(_ nsView: NSView, context: Context) {
-    (nsView as? FocusRingSuppressingView)?.suppressSoon()
-  }
-}
-
-private final class FocusRingSuppressingView: NSView {
-  override func viewDidMoveToWindow() {
-    super.viewDidMoveToWindow()
-    suppressSoon()
-  }
-
-  override func layout() {
-    super.layout()
-    suppressSoon()
-  }
-
-  func suppressSoon() {
-    DispatchQueue.main.async { [weak self] in
-      self?.window?.contentView?.suppressFocusRingsRecursively()
-    }
-  }
-}
-
-private extension NSView {
-  func suppressFocusRingsRecursively() {
-    focusRingType = .none
-    subviews.forEach { $0.suppressFocusRingsRecursively() }
-  }
-}
-
 struct MetricCell: View {
   let label: String
   let value: String
@@ -78,8 +20,7 @@ struct MetricCell: View {
     }
     .frame(maxWidth: .infinity, alignment: .leading)
     .padding(12)
-    .background(.background)
-    .overlay(Rectangle().stroke(.separator, lineWidth: 1))
+    .liquidGlassSurface(.strong, cornerRadius: AppTheme.radiusMedium)
   }
 }
 
@@ -100,12 +41,7 @@ struct SectionBox<Content: View>: View {
       content
     }
     .padding(14)
-    .background(AppTheme.panel)
-    .clipShape(RoundedRectangle(cornerRadius: 6))
-    .overlay(
-      RoundedRectangle(cornerRadius: 6)
-        .stroke(.separator, lineWidth: 1)
-    )
+    .liquidGlassSurface(.regular, cornerRadius: AppTheme.radiusMedium)
   }
 }
 
@@ -129,13 +65,17 @@ struct TagText: View {
   var body: some View {
     Text(text)
       .font(.caption.weight(.semibold))
+      .foregroundStyle(.secondary)
       .lineLimit(1)
       .truncationMode(.tail)
       .allowsTightening(false)
-      .padding(.horizontal, 7)
-      .padding(.vertical, 4)
-      .background(.quaternary)
-      .clipShape(RoundedRectangle(cornerRadius: 4))
+      .padding(.leading, 7)
+      .padding(.vertical, 2)
+      .overlay(alignment: .leading) {
+        Rectangle()
+          .fill(AppTheme.border)
+          .frame(width: 1)
+      }
   }
 }
 
@@ -166,8 +106,7 @@ struct EmptyPanel: View {
     }
     .frame(maxWidth: .infinity, alignment: .leading)
     .padding(18)
-    .background(.background)
-    .overlay(Rectangle().stroke(.separator, lineWidth: 1))
+    .liquidGlassSurface(.strong, cornerRadius: AppTheme.radiusMedium)
   }
 }
 
@@ -221,8 +160,12 @@ struct MultilineInput: View {
         .frame(minHeight: minHeight)
         .scrollContentBackground(.hidden)
         .padding(8)
-        .background(.background)
-        .overlay(RoundedRectangle(cornerRadius: 4).stroke(.separator))
+        .background(AppTheme.strongGlassSurface)
+        .clipShape(RoundedRectangle(cornerRadius: AppTheme.radiusSmall, style: .continuous))
+        .overlay(
+          RoundedRectangle(cornerRadius: AppTheme.radiusSmall, style: .continuous)
+            .strokeBorder(AppTheme.border, lineWidth: 1)
+        )
     }
   }
 }
@@ -257,6 +200,9 @@ struct DocumentProofPanel: View {
   @State private var recipient = ""
   @State private var taskNotes = ""
   @State private var taskStatus = ""
+  @State private var documentSearch = ""
+  @State private var showsAllDocuments = false
+  @State private var isImportingFiles = false
 
   var body: some View {
     VStack(alignment: .leading, spacing: 12) {
@@ -273,9 +219,18 @@ struct DocumentProofPanel: View {
         Button {
           importing = true
         } label: {
-          Label("Import files", systemImage: "plus")
+          HStack(spacing: 7) {
+            if isImportingFiles {
+              ProgressView()
+                .controlSize(.small)
+            } else {
+              Image(systemName: "plus")
+            }
+            Text(isImportingFiles ? "Importing…" : "Import files")
+          }
         }
         .buttonStyle(.borderedProminent)
+        .disabled(isImportingFiles)
       }
 
       if !importError.isEmpty {
@@ -283,6 +238,8 @@ struct DocumentProofPanel: View {
           .font(.caption)
           .foregroundStyle(.red)
       }
+
+      DocumentIndexFeedback(status: store.state.documentIndexStatus)
 
       if store.state.documents.isEmpty {
         Divider()
@@ -292,43 +249,37 @@ struct DocumentProofPanel: View {
       } else {
         Divider()
         if availableTasks.count > 1 {
-          Picker("Task", selection: $selectedTask) {
-            ForEach(availableTasks) { task in
-              Text(task.label).tag(task)
-            }
-          }
-          .pickerStyle(.segmented)
-        }
-
-        HStack(alignment: .top, spacing: 12) {
-          VStack(alignment: .leading, spacing: 8) {
-            Text("Documents")
-              .font(.subheadline.weight(.semibold))
-              .foregroundStyle(.secondary)
-            ScrollView {
-              LazyVStack(spacing: 6) {
-                ForEach(store.state.documents) { document in
-                  Button {
-                    store.selectedDocumentID = document.id
-                    documentTitle = cleanTitle(for: document)
-                  } label: {
-                    DocumentProofRow(document: document, isSelected: store.selectedDocumentID == document.id)
-                  }
-                  .buttonStyle(.plain)
-                }
+          ViewThatFits(in: .horizontal) {
+            Picker("Task", selection: $selectedTask) {
+              ForEach(availableTasks) { task in
+                Text(task.label).tag(task)
               }
             }
-            .frame(minHeight: 170, maxHeight: 250)
-          }
-          .frame(minWidth: 260, idealWidth: 320)
+            .pickerStyle(.segmented)
+            .frame(minWidth: 480)
 
-          if let document = store.selectedDocument {
-            selectedDocumentView(document)
-          } else {
-            Text(availableTasks.count == 1 ? "Select a document to save as proof." : "Select a document to attach, edit, research, checklist, or save as proof.")
-              .font(.subheadline)
-              .foregroundStyle(.secondary)
-              .frame(maxWidth: .infinity, alignment: .leading)
+            Picker("Task", selection: $selectedTask) {
+              ForEach(availableTasks) { task in
+                Text(task.label).tag(task)
+              }
+            }
+            .pickerStyle(.menu)
+          }
+        }
+
+        ViewThatFits(in: .horizontal) {
+          HStack(alignment: .top, spacing: 12) {
+            documentList
+              .frame(minWidth: 260, idealWidth: 320)
+            documentDetail
+          }
+          .frame(minWidth: 680)
+
+          VStack(alignment: .leading, spacing: 12) {
+            documentList
+              .frame(maxWidth: .infinity, minHeight: 150, maxHeight: 220)
+            Divider()
+            documentDetail
           }
         }
       }
@@ -348,14 +299,95 @@ struct DocumentProofPanel: View {
       allowedContentTypes: DocumentImportTypes.allowed,
       allowsMultipleSelection: true
     ) { result in
-      do {
-        let urls = try result.get()
-        try store.importDocuments(from: urls)
-        documentTitle = store.selectedDocument.map(cleanTitle) ?? ""
-        importError = ""
-      } catch {
-        importError = error.localizedDescription
+      Task { @MainActor in
+        isImportingFiles = true
+        defer { isImportingFiles = false }
+        do {
+          let urls = try result.get()
+          let outcome = try await store.importDocuments(from: urls)
+          documentTitle = store.selectedDocument.map(cleanTitle) ?? ""
+          importError = outcome.failures.isEmpty ? "" : outcome.summary
+        } catch {
+          importError = error.localizedDescription
+        }
       }
+    }
+  }
+
+  private var documentList: some View {
+    VStack(alignment: .leading, spacing: 8) {
+      HStack(spacing: 10) {
+        Text("Documents")
+          .font(.subheadline.weight(.semibold))
+          .foregroundStyle(.secondary)
+        Spacer()
+        Text("\(filteredDocuments.count)")
+          .font(.caption.monospaced().weight(.semibold))
+          .foregroundStyle(.secondary)
+      }
+
+      TextField("Find a document", text: $documentSearch)
+        .textFieldStyle(.roundedBorder)
+        .accessibilityLabel("Find a document")
+
+      ScrollView {
+        LazyVStack(spacing: 6) {
+          if visibleDocuments.isEmpty {
+            Text("No documents match this search.")
+              .font(.caption)
+              .foregroundStyle(.secondary)
+              .frame(maxWidth: .infinity, minHeight: 72, alignment: .center)
+          }
+          ForEach(visibleDocuments) { document in
+            Button {
+              store.selectedDocumentID = document.id
+              documentTitle = cleanTitle(for: document)
+            } label: {
+              DocumentProofRow(document: document, isSelected: store.selectedDocumentID == document.id)
+            }
+            .buttonStyle(LiquidPressButtonStyle())
+            .accessibilityValue(store.selectedDocumentID == document.id ? "Selected" : "")
+          }
+        }
+      }
+      .frame(minHeight: 150, maxHeight: 250)
+
+      if documentSearch.trimmed.isEmpty && filteredDocuments.count > limit {
+        Button(showsAllDocuments ? "Show fewer" : "Show all \(filteredDocuments.count) documents") {
+          showsAllDocuments.toggle()
+        }
+        .buttonStyle(LiquidPressButtonStyle())
+        .font(.caption.weight(.semibold))
+        .foregroundStyle(.secondary)
+        .frame(minHeight: 44)
+      }
+    }
+  }
+
+  private var filteredDocuments: [CandidateDocument] {
+    let query = documentSearch.trimmed
+    guard !query.isEmpty else { return store.state.documents }
+    return store.state.documents.filter { document in
+      [document.title, document.fileName, document.kind, document.summary]
+        .joined(separator: " ")
+        .localizedCaseInsensitiveContains(query)
+    }
+  }
+
+  private var visibleDocuments: [CandidateDocument] {
+    guard documentSearch.trimmed.isEmpty, !showsAllDocuments else { return filteredDocuments }
+    return Array(filteredDocuments.prefix(max(limit, 1)))
+  }
+
+  @ViewBuilder
+  private var documentDetail: some View {
+    if let document = store.selectedDocument {
+      selectedDocumentView(document)
+    } else {
+      Text(availableTasks.count == 1 ? "Select a document to save as proof." : "Select a document to attach, edit, research, checklist, or save as proof.")
+        .font(.subheadline)
+        .foregroundStyle(.secondary)
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
   }
 
@@ -387,6 +419,25 @@ struct DocumentProofPanel: View {
         .font(.caption)
         .foregroundStyle(.secondary)
         .fixedSize(horizontal: false, vertical: true)
+
+      DisclosureGroup("Extracted text") {
+        Group {
+          if document.extractedText.trimmed.isEmpty {
+            Text("No text was extracted from this file. The original file remains attached and can still be opened or saved as proof.")
+              .foregroundStyle(.secondary)
+          } else {
+            ScrollView {
+              Text(document.extractedText)
+                .font(.system(.caption, design: .monospaced))
+                .textSelection(.enabled)
+                .frame(maxWidth: .infinity, alignment: .topLeading)
+            }
+            .frame(minHeight: 120, maxHeight: 260)
+          }
+        }
+        .font(.caption)
+        .padding(.top, 6)
+      }
 
       if selectedTask == .proof {
         LabeledContent("Proof title") {
@@ -481,7 +532,7 @@ struct DocumentProofPanel: View {
   private func suggestedTitle(for document: CandidateDocument) -> String {
     let base: String
     if document.kind.lowercased() == "pdf" && document.title.localizedCaseInsensitiveContains("cv") {
-      base = "Local Candidate - CV"
+      base = "Example User - CV"
     } else {
       base = cleanTitle(for: document)
     }
@@ -527,6 +578,23 @@ struct DocumentProofPanel: View {
     ]
     .filter { !$0.trimmed.isEmpty }
     .joined(separator: "\n")
+  }
+}
+
+struct DocumentIndexFeedback: View {
+  let status: DocumentIndexStatus?
+
+  var body: some View {
+    if let status {
+      HStack(alignment: .firstTextBaseline, spacing: 7) {
+        Image(systemName: status.succeeded ? "checkmark.circle" : "exclamationmark.triangle")
+        Text(status.message)
+          .fixedSize(horizontal: false, vertical: true)
+      }
+      .font(.caption)
+      .foregroundStyle(status.succeeded ? Color.secondary : Color.red)
+      .accessibilityLabel(status.message)
+    }
   }
 }
 

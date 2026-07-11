@@ -22,7 +22,7 @@ Use sub-agents for any non-trivial task where they can materially help:
 
 - map unfamiliar code paths, contracts, tests, or sibling surfaces
 - implement isolated portions of a multi-file or multi-surface change
-- compare frontend, backend, PWA, native app, web app, MCP, or Hermes contracts
+- compare frontend, backend, PWA, Smaug, notebook, or QuantLab contracts
 - run targeted review for correctness, accessibility, data fidelity, security, performance, or missing tests
 - attempt a focused repair after a review finding or failing validation
 - verify docs, provider behavior, framework rules, or recurring lessons

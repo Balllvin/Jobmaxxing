@@ -19,18 +19,13 @@ struct DashboardView: View {
           interviews: interviewCount
         )
 
-        ViewThatFits(in: .horizontal) {
-          HStack(alignment: .top, spacing: 24) {
-            applicationQueue
-              .frame(minWidth: 420)
-            sideQueue
-              .frame(width: 320)
-          }
-
-          VStack(alignment: .leading, spacing: 20) {
-            applicationQueue
-            sideQueue
-          }
+        LazyVGrid(
+          columns: [GridItem(.adaptive(minimum: 320), spacing: 24, alignment: .top)],
+          alignment: .leading,
+          spacing: 20
+        ) {
+          applicationQueue
+          sideQueue
         }
       }
       .padding(20)
@@ -45,12 +40,17 @@ struct DashboardView: View {
       } else {
         LazyVStack(spacing: 0) {
           ForEach(jobs) { job in
-            DashboardApplicationRow(job: job, isSelected: store.selectedJobID == job.id)
-              .onTapGesture {
-                openApplication(job.id)
-              }
-              .accessibilityAddTraits(.isButton)
-              .accessibilityLabel("\(job.role), \(job.company)")
+            Button {
+              openApplication(job.id)
+            } label: {
+              DashboardApplicationRow(job: job, isSelected: store.selectedJobID == job.id)
+            }
+              .buttonStyle(LiquidPressButtonStyle())
+              .accessibilityHint("Open application")
+              .accessibilityAddTraits(store.selectedJobID == job.id ? .isSelected : [])
+              .accessibilityLabel(
+                "\(job.role), \(job.company), \(job.stage.label)\(job.draft == nil ? "" : ", draft available")"
+              )
 
             if job.id != jobs.last?.id {
               Divider()
@@ -408,7 +408,10 @@ private struct DashboardQueueRow: View {
   @ViewBuilder
   private var actionTag: some View {
     if let action = item.action, !action.trimmed.isEmpty {
-      TagText(text: action)
+      Text(action)
+        .font(.caption.weight(.medium))
+        .foregroundStyle(.secondary)
+        .lineLimit(1)
     }
   }
 }

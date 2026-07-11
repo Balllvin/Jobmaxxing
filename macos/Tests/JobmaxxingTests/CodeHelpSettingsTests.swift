@@ -17,6 +17,7 @@ final class CodeHelpSettingsTests: XCTestCase {
 
     let prompt = CodeHelpAgentRunner.prompt(
       for: request,
+      repoRootPath: "/tmp/jobmaxxing",
       search: CodeHelpSearchResult(
         summary: "macos/Sources/Jobmaxxing/Views/SettingsView.swift:95: private struct SettingsSidebar: View",
         matchedFiles: ["macos/Sources/Jobmaxxing/Views/SettingsView.swift"]
@@ -29,7 +30,6 @@ final class CodeHelpSettingsTests: XCTestCase {
     XCTAssertTrue(prompt.contains("SettingsPage controls Settings navigation."))
     XCTAssertTrue(prompt.contains("SettingsSidebar"))
     XCTAssertTrue(prompt.contains("Medium"))
-    XCTAssertFalse(prompt.contains("/tmp/jobmaxxing"))
     XCTAssertFalse(prompt.contains("applications, contacts, and interview prep"))
   }
 
@@ -94,6 +94,7 @@ final class CodeHelpSettingsTests: XCTestCase {
     )
     let prompt = CodeHelpAgentRunner.prompt(
       for: request,
+      repoRootPath: "/tmp/jobmaxxing",
       search: CodeHelpSearchResult(summary: "SettingsHelpPages.swift", matchedFiles: ["SettingsHelpPages.swift"])
     )
 

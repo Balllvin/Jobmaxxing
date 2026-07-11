@@ -1,7 +1,25 @@
 import SwiftUI
 
+struct CompanyWorkspaceDraft: Equatable {
+  var notes: String
+  var applicationRole: String
+  var applicationURL: String
+  var applicationContext: String
+}
+
+struct CompanyDirectoryDraft: Equatable {
+  var name = ""
+  var website = ""
+  var linkedInURL = ""
+  var category = "Target company"
+  var relationship = "Application target"
+  var notes = ""
+}
+
 struct CompaniesView: View {
   @EnvironmentObject private var store: JobmaxxingStore
+  @Binding var workspaceDrafts: [String: CompanyWorkspaceDraft]
+  @Binding var directoryDraft: CompanyDirectoryDraft
   let openApplication: (String) -> Void
   let openContacts: (String) -> Void
   @AppStorage("jobmaxxing.companyDetailOpen") private var companyDetailOpen = false
@@ -17,10 +35,10 @@ struct CompaniesView: View {
       if companyDetailOpen, store.selectedCompany != nil {
         CompanyDetailView(
           openApplication: openApplication,
-          openContacts: openContacts
-        ) {
-          companyDetailOpen = false
-        }
+          openContacts: openContacts,
+          onBack: { companyDetailOpen = false },
+          workspaceDrafts: $workspaceDrafts
+        )
       } else {
         CompanyDirectoryView(
           name: $name,
@@ -38,10 +56,12 @@ struct CompaniesView: View {
     .padding(20)
     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     .onAppear {
+      restoreDirectoryDraft()
       if store.selectedCompany == nil {
         companyDetailOpen = false
       }
     }
+    .onDisappear(perform: preserveDirectoryDraft)
   }
 
   private func saveCompany() {
@@ -58,6 +78,27 @@ struct CompaniesView: View {
     linkedInURL = ""
     notes = ""
     companyDetailOpen = true
+    preserveDirectoryDraft()
+  }
+
+  private func restoreDirectoryDraft() {
+    name = directoryDraft.name
+    website = directoryDraft.website
+    linkedInURL = directoryDraft.linkedInURL
+    category = directoryDraft.category
+    relationship = directoryDraft.relationship
+    notes = directoryDraft.notes
+  }
+
+  private func preserveDirectoryDraft() {
+    directoryDraft = CompanyDirectoryDraft(
+      name: name,
+      website: website,
+      linkedInURL: linkedInURL,
+      category: category,
+      relationship: relationship,
+      notes: notes
+    )
   }
 }
 
@@ -72,21 +113,8 @@ private struct CompanyDirectoryView: View {
   let openCompany: (CompanyProfile) -> Void
   let saveCompany: () -> Void
 
-  private var filteredCompanies: [CompanyProfile] {
-    store.companyProfiles
-      .filter(matchesFilter)
-      .filter(matchesQuery)
-  }
-
-  private var targetCompanies: [CompanyProfile] {
-    filteredCompanies.filter { !$0.applicationIDs.isEmpty || $0.relationship.localizedCaseInsensitiveContains("target") }
-  }
-
-  private var proofCompanies: [CompanyProfile] {
-    filteredCompanies.filter { $0.applicationIDs.isEmpty && (!$0.experienceIDs.isEmpty || !$0.relationship.localizedCaseInsensitiveContains("target")) }
-  }
-
   var body: some View {
+    let snapshot = directorySnapshot
     VStack(alignment: .leading, spacing: 18) {
       VStack(alignment: .leading, spacing: 12) {
         HStack(spacing: 12) {
@@ -100,17 +128,27 @@ private struct CompanyDirectoryView: View {
           }
           .labelsHidden()
           .frame(width: 150)
-          Text("\(filteredCompanies.count)")
+          Text("\(snapshot.filtered.count)")
             .font(.caption.monospaced().weight(.semibold))
             .foregroundStyle(.secondary)
             .frame(minWidth: 28, alignment: .trailing)
         }
 
-        if filteredCompanies.isEmpty {
+        if snapshot.filtered.isEmpty {
           CompanyInlineEmpty(title: "No companies found", detail: "Adjust search or add a company.")
         } else {
-          CompanyGroup(title: "Targets", companies: targetCompanies, openCompany: openCompany)
-          CompanyGroup(title: "Worked with / proof", companies: proofCompanies, openCompany: openCompany)
+          CompanyGroup(
+            title: "Targets",
+            companies: snapshot.targets,
+            contactCounts: snapshot.contactCounts,
+            openCompany: openCompany
+          )
+          CompanyGroup(
+            title: "Worked with / proof",
+            companies: snapshot.proof,
+            contactCounts: snapshot.contactCounts,
+            openCompany: openCompany
+          )
         }
       }
 
@@ -145,14 +183,42 @@ private struct CompanyDirectoryView: View {
     .frame(maxWidth: 980, alignment: .topLeading)
   }
 
-  private func matchesFilter(_ company: CompanyProfile) -> Bool {
+  private var directorySnapshot: CompanyDirectorySnapshot {
+    var contactIDs: [String: Set<String>] = [:]
+    var contactSearchText: [String: [String]] = [:]
+    for contact in store.contacts {
+      let text = "\(contact.name) \(contact.role)"
+      for link in contact.companyLinks {
+        contactIDs[link.companyID, default: []].insert(contact.id)
+        contactSearchText[link.companyID, default: []].append(text)
+      }
+    }
+    let contactCounts = contactIDs.mapValues(\.count)
+    let cleanQuery = query.trimmed
+    let filtered = store.companyProfiles.filter { company in
+      matchesFilter(company, contactCount: contactCounts[company.id, default: 0])
+        && matchesQuery(
+          company,
+          query: cleanQuery,
+          contactText: contactSearchText[company.id, default: []].joined(separator: " ")
+        )
+    }
+    return CompanyDirectorySnapshot(
+      filtered: filtered,
+      targets: filtered.filter { !$0.applicationIDs.isEmpty || $0.relationship.localizedCaseInsensitiveContains("target") },
+      proof: filtered.filter { $0.applicationIDs.isEmpty && (!$0.experienceIDs.isEmpty || !$0.relationship.localizedCaseInsensitiveContains("target")) },
+      contactCounts: contactCounts
+    )
+  }
+
+  private func matchesFilter(_ company: CompanyProfile, contactCount: Int) -> Bool {
     switch selectedFilter {
     case "targets":
       return company.relationship.localizedCaseInsensitiveContains("target")
     case "applications":
       return !company.applicationIDs.isEmpty
     case "contacts":
-      return !store.contacts(for: company.id).isEmpty
+      return contactCount > 0
     case "proof":
       return !company.experienceIDs.isEmpty || company.relationship.localizedCaseInsensitiveContains("built")
     default:
@@ -160,9 +226,8 @@ private struct CompanyDirectoryView: View {
     }
   }
 
-  private func matchesQuery(_ company: CompanyProfile) -> Bool {
-    let clean = query.trimmed
-    guard !clean.isEmpty else { return true }
+  private func matchesQuery(_ company: CompanyProfile, query: String, contactText: String) -> Bool {
+    guard !query.isEmpty else { return true }
     return [
       company.name,
       company.website,
@@ -174,21 +239,29 @@ private struct CompanyDirectoryView: View {
       company.summary,
       company.relationship,
       company.notes,
-      store.contacts(for: company.id).map { "\($0.name) \($0.role)" }.joined(separator: " ")
+      contactText
     ]
     .joined(separator: " ")
-    .localizedCaseInsensitiveContains(clean)
+    .localizedCaseInsensitiveContains(query)
   }
+}
+
+private struct CompanyDirectorySnapshot {
+  let filtered: [CompanyProfile]
+  let targets: [CompanyProfile]
+  let proof: [CompanyProfile]
+  let contactCounts: [String: Int]
 }
 
 private struct CompanyGroup: View {
   let title: String
   let companies: [CompanyProfile]
+  let contactCounts: [String: Int]
   let openCompany: (CompanyProfile) -> Void
 
   var body: some View {
     if !companies.isEmpty {
-      VStack(alignment: .leading, spacing: 0) {
+      LazyVStack(alignment: .leading, spacing: 0) {
         Text(title.uppercased())
           .font(.caption.weight(.bold))
           .foregroundStyle(.secondary)
@@ -199,9 +272,9 @@ private struct CompanyGroup: View {
           Button {
             openCompany(company)
           } label: {
-            CompanyListRow(company: company)
+            CompanyListRow(company: company, contactCount: contactCounts[company.id, default: 0])
           }
-          .buttonStyle(.plain)
+          .buttonStyle(LiquidPressButtonStyle())
           Divider()
         }
       }
@@ -210,8 +283,8 @@ private struct CompanyGroup: View {
 }
 
 private struct CompanyListRow: View {
-  @EnvironmentObject private var store: JobmaxxingStore
   let company: CompanyProfile
+  let contactCount: Int
 
   private var detailText: String {
     [company.relationship, company.publicStatus]
@@ -221,7 +294,6 @@ private struct CompanyListRow: View {
 
   private var countText: String {
     let roleCount = company.applicationIDs.count
-    let contactCount = store.contacts(for: company.id).count
     return "\(roleCount) roles / \(contactCount) contacts"
   }
 
@@ -289,10 +361,7 @@ private struct CompanyDetailView: View {
   let openApplication: (String) -> Void
   let openContacts: (String) -> Void
   let onBack: () -> Void
-  @State private var localNotes = ""
-  @State private var applicationRole = ""
-  @State private var applicationURL = ""
-  @State private var applicationContext = ""
+  @Binding var workspaceDrafts: [String: CompanyWorkspaceDraft]
 
   var body: some View {
     if let company = store.selectedCompany {
@@ -308,13 +377,13 @@ private struct CompanyDetailView: View {
 
         CompanyApplicationIntakeSection(
           company: company,
-          role: $applicationRole,
-          sourceURL: $applicationURL,
-          context: $applicationContext,
+          role: draftBinding(for: company, \.applicationRole),
+          sourceURL: draftBinding(for: company, \.applicationURL),
+          context: draftBinding(for: company, \.applicationContext),
           openApplication: openApplication
         )
         CompanyApplicationsSection(company: company, openApplication: openApplication)
-        CompanyResearchSection(research: company.research)
+        CompanyResearchSection(research: company.research, nextActions: company.nextActions)
         CompanyContactsSection(
           company: company,
           openContacts: openContacts
@@ -332,7 +401,7 @@ private struct CompanyDetailView: View {
           HStack {
             Spacer()
             ImproveTextControl(
-              currentText: localNotes,
+              currentText: draft(for: company).notes,
               context: [
                 "Company: \(company.name)",
                 "Summary: \(company.summary)",
@@ -340,21 +409,20 @@ private struct CompanyDetailView: View {
                 "Research: \(company.research.status)"
               ].joined(separator: "\n"),
               kind: "company notes",
-              onApply: { localNotes = $0 }
+              onApply: { workspaceDrafts[company.id] = draft(for: company, replacing: \.notes, with: $0) }
             )
           }
-          TextEditor(text: $localNotes)
+          TextEditor(text: draftBinding(for: company, \.notes))
             .frame(minHeight: 100)
-            .onAppear { localNotes = company.notes }
-            .onChange(of: company.id) { _, _ in localNotes = company.notes }
           Button("Save notes") {
-            store.updateCompanyNotes(companyID: company.id, notes: localNotes)
+            store.updateCompanyNotes(companyID: company.id, notes: draft(for: company).notes)
           }
           .buttonStyle(.borderedProminent)
+          .disabled(draft(for: company).notes == company.notes)
         }
 
-        DisclosureGroup("Agent runs") {
-          AgentManagerPanel(title: "Agents", runs: store.agentRuns(forCompanyID: company.id))
+        DisclosureGroup("Plan history") {
+          AgentManagerPanel(title: "Local plans", runs: store.agentRuns(forCompanyID: company.id))
         }
       }
       .frame(maxWidth: 980, alignment: .topLeading)
@@ -362,6 +430,37 @@ private struct CompanyDetailView: View {
       EmptyPanel(title: "No company open", detail: "Return to the company directory or create a company profile.")
         .padding(18)
     }
+  }
+
+  private func draft(for company: CompanyProfile) -> CompanyWorkspaceDraft {
+    workspaceDrafts[company.id] ?? CompanyWorkspaceDraft(
+      notes: company.notes,
+      applicationRole: "",
+      applicationURL: "",
+      applicationContext: ""
+    )
+  }
+
+  private func draftBinding(
+    for company: CompanyProfile,
+    _ keyPath: WritableKeyPath<CompanyWorkspaceDraft, String>
+  ) -> Binding<String> {
+    Binding(
+      get: { draft(for: company)[keyPath: keyPath] },
+      set: { value in
+        workspaceDrafts[company.id] = draft(for: company, replacing: keyPath, with: value)
+      }
+    )
+  }
+
+  private func draft(
+    for company: CompanyProfile,
+    replacing keyPath: WritableKeyPath<CompanyWorkspaceDraft, String>,
+    with value: String
+  ) -> CompanyWorkspaceDraft {
+    var next = draft(for: company)
+    next[keyPath: keyPath] = value
+    return next
   }
 }
 
@@ -493,6 +592,7 @@ private struct CompanyApplicationsSection: View {
 private struct CompanyResearchSection: View {
   @EnvironmentObject private var store: JobmaxxingStore
   let research: CompanyResearch
+  let nextActions: [String]
   @State private var status = ""
 
   var body: some View {
@@ -502,22 +602,12 @@ private struct CompanyResearchSection: View {
           .font(.headline)
         Spacer()
         if let company = store.selectedCompany {
-          HStack {
-            Button {
-              store.prepareCompanyResearch(companyID: company.id)
-              status = "Research packet prepared."
-            } label: {
-              Label("Prepare research", systemImage: "magnifyingglass")
-            }
-            .buttonStyle(.borderedProminent)
-
-            Button {
-              status = store.enhanceCompany(companyID: company.id)
-            } label: {
-              Label("Enhance profile", systemImage: "sparkles")
-            }
-            .buttonStyle(.bordered)
+          Button {
+            status = store.enhanceCompany(companyID: company.id)
+          } label: {
+            Label("Prepare research plan", systemImage: "list.bullet.clipboard")
           }
+          .buttonStyle(.borderedProminent)
         }
       }
       if !status.trimmed.isEmpty {
@@ -556,6 +646,8 @@ private struct CompanyResearchSection: View {
       ResearchBlock(title: "Hiring signals", items: research.hiringSignals)
       ResearchBlock(title: "Risks", items: research.risks)
       ResearchBlock(title: "Open questions", items: research.openQuestions)
+      ResearchBlock(title: "Research plan", items: research.agentPlan)
+      ResearchBlock(title: "Next actions", items: nextActions)
     }
   }
 }

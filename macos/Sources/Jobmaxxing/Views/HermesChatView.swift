@@ -3,12 +3,15 @@ import SwiftUI
 
 struct HermesChatView: View {
   @EnvironmentObject private var store: JobmaxxingStore
+  @Binding var draft: String
+  @Binding var attachmentIDs: [String]
   @StateObject private var dictation = DictationController()
-  @State private var draft = ""
   @State private var composerHeight = ComposerMetrics.minHeight
   @State private var importing = false
   @State private var attachments: [CandidateDocument] = []
   @State private var syncStatus = ""
+  @State private var isSyncingTelegram = false
+  @State private var isImportingAttachments = false
 
   private var thread: HermesChatThread? {
     store.selectedHermesThread
@@ -20,6 +23,10 @@ struct HermesChatView: View {
 
   private var isHermesRunning: Bool {
     thread?.messages.contains { $0.status.trimmed.lowercased() == "running" } == true
+  }
+
+  private var isTelegramEnabled: Bool {
+    store.integrationConnectors.first(where: { $0.id == "telegram" })?.isEnabled == true
   }
 
   private var slashCommands: [SlashCommandSuggestion] {
@@ -135,42 +142,57 @@ struct HermesChatView: View {
   }
 
   var body: some View {
+    let sections = transcriptSections
     VStack(spacing: 0) {
-      chatStateHeader
-      transcript
+      chatStateHeader(sections)
+      transcript(sections)
       composer
     }
-    .background(AppTheme.canvas)
+    .background(Color.clear)
     .onAppear {
       store.selectedHermesThreadID = store.hermesChatState.selectedThreadID
+      attachments = attachmentIDs.compactMap { id in
+        store.state.documents.first(where: { $0.id == id })
+      }
+    }
+    .onChange(of: attachments.map(\.id)) { _, ids in
+      attachmentIDs = ids
+    }
+    .onDisappear {
+      attachmentIDs = attachments.map(\.id)
+      dictation.cancel()
     }
     .fileImporter(
       isPresented: $importing,
       allowedContentTypes: DocumentImportTypes.allowed,
       allowsMultipleSelection: true
     ) { result in
-      do {
-        let urls = try result.get()
-        try store.importDocuments(from: urls)
-        let imported = store.state.documents.filter { document in
-          urls.contains { $0.lastPathComponent == document.fileName }
+      Task { @MainActor in
+        isImportingAttachments = true
+        defer { isImportingAttachments = false }
+        do {
+          let urls = try result.get()
+          let outcome = try await store.importDocuments(from: urls)
+          attachments.append(contentsOf: outcome.importedDocuments.filter { importedDocument in
+            !attachments.contains(where: { $0.id == importedDocument.id })
+          })
+          syncStatus = outcome.failures.isEmpty
+            ? (store.state.documentIndexStatus?.message ?? outcome.summary)
+            : outcome.summary
+        } catch {
+          syncStatus = error.localizedDescription
         }
-        attachments.append(contentsOf: imported.filter { importedDocument in
-          !attachments.contains(where: { $0.id == importedDocument.id })
-        })
-      } catch {
-        syncStatus = error.localizedDescription
       }
     }
   }
 
-  private var chatStateHeader: some View {
+  private func chatStateHeader(_ sections: HermesTranscriptSections) -> some View {
     HStack(alignment: .center, spacing: 12) {
       VStack(alignment: .leading, spacing: 3) {
         Text(routeTitle)
           .font(.headline.weight(.semibold))
           .foregroundStyle(.primary)
-        Text(HermesTranscriptPresentation.latestSummary(from: transcriptSections.latestUsefulAssistant))
+        Text(HermesTranscriptPresentation.latestSummary(from: sections.latestUsefulAssistant))
           .font(.caption)
           .foregroundStyle(.secondary)
           .lineLimit(2)
@@ -178,6 +200,25 @@ struct HermesChatView: View {
       }
       Spacer(minLength: 12)
       HStack(spacing: 8) {
+        if isTelegramEnabled {
+          Button {
+            Task { await syncTelegram(silent: false) }
+          } label: {
+            Group {
+              if isSyncingTelegram {
+                ProgressView()
+                  .scaleEffect(0.55)
+              } else {
+                Image(systemName: "arrow.triangle.2.circlepath")
+              }
+            }
+            .frame(width: 44, height: 44)
+          }
+          .buttonStyle(LiquidPressButtonStyle())
+          .disabled(isSyncingTelegram)
+          .accessibilityLabel(isSyncingTelegram ? "Syncing Telegram" : "Sync Telegram")
+          .help("Import new messages from the configured Telegram chat")
+        }
         if isHermesRunning {
           ProgressView()
             .scaleEffect(0.55)
@@ -196,6 +237,7 @@ struct HermesChatView: View {
         .fill(Color(nsColor: .separatorColor).opacity(0.7))
         .frame(height: 1)
     }
+    .background(.bar)
   }
 
   private var routeTitle: String {
@@ -203,14 +245,14 @@ struct HermesChatView: View {
     return title.isEmpty ? "Chat · Hermes" : "\(title) · Hermes"
   }
 
-  private var transcript: some View {
+  private func transcript(_ sections: HermesTranscriptSections) -> some View {
     ScrollViewReader { proxy in
       ScrollView {
         LazyVStack(alignment: .leading, spacing: 12) {
-          if transcriptSections.visibleMessages.isEmpty {
+          if sections.visibleMessages.isEmpty {
             ChatEmptyState()
           } else {
-            ForEach(transcriptSections.visibleMessages) { message in
+            ForEach(sections.visibleMessages) { message in
               ChatMessageRow(
                 message: message,
                 onReply: { reply(to: message) },
@@ -219,8 +261,8 @@ struct HermesChatView: View {
                 .id(message.id)
             }
           }
-          if !transcriptSections.diagnosticMessages.isEmpty {
-            TranscriptDiagnosticsDisclosure(messages: transcriptSections.diagnosticMessages) { message in
+          if !sections.diagnosticMessages.isEmpty {
+            TranscriptDiagnosticsDisclosure(messages: sections.diagnosticMessages) { message in
               reply(to: message)
             } onCopy: { message in
               copy(message)
@@ -234,33 +276,21 @@ struct HermesChatView: View {
         .frame(maxWidth: .infinity, alignment: .topLeading)
       }
       .onAppear {
-        scrollToLatestMessage(with: proxy, animated: false)
+        scrollToLatestMessage(with: proxy)
       }
       .onChange(of: thread?.messages.last?.id) { _, _ in
-        scrollToLatestMessage(with: proxy, animated: true)
+        scrollToLatestMessage(with: proxy)
       }
-      .onChange(of: thread?.messages.last?.text) { _, _ in
-        scrollToLatestMessage(with: proxy, animated: true)
+      .onChange(of: (thread?.messages.last?.text.count ?? 0) / 160) { _, _ in
+        scrollToLatestMessage(with: proxy)
       }
     }
     .frame(maxWidth: .infinity, maxHeight: .infinity)
   }
 
-  private func scrollToLatestMessage(with proxy: ScrollViewProxy, animated: Bool) {
-    let action = {
+  private func scrollToLatestMessage(with proxy: ScrollViewProxy) {
+    DispatchQueue.main.async {
       proxy.scrollTo(Self.transcriptBottomID, anchor: .bottom)
-    }
-    if animated {
-      withAnimation(.easeOut(duration: 0.18)) {
-        action()
-      }
-    } else {
-      DispatchQueue.main.async {
-        action()
-      }
-      DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-        action()
-      }
     }
   }
 
@@ -302,9 +332,15 @@ struct HermesChatView: View {
       }
 
       HStack(alignment: .bottom, spacing: 6) {
-        ComposerIconButton(systemName: "paperclip", accessibilityLabel: "Attach files", isProminent: false) {
+        ComposerIconButton(
+          systemName: "paperclip",
+          accessibilityLabel: isImportingAttachments ? "Importing attachments" : "Attach files",
+          isProminent: false,
+          isLoading: isImportingAttachments
+        ) {
           importing = true
         }
+        .disabled(isImportingAttachments)
         .help("Attach files to this message")
 
         ZStack(alignment: .leading) {
@@ -324,15 +360,11 @@ struct HermesChatView: View {
             send()
           }
           .frame(height: composerHeight)
+          .disabled(isHermesRunning)
         }
         .padding(.horizontal, 10)
         .frame(height: composerHeight)
-        .background(.regularMaterial)
-        .clipShape(RoundedRectangle(cornerRadius: 8))
-        .overlay(
-          RoundedRectangle(cornerRadius: 8)
-            .stroke(Color(nsColor: .separatorColor).opacity(0.75), lineWidth: 1)
-        )
+        .liquidGlassSurface(.strong, cornerRadius: AppTheme.radiusMedium, isInteractive: true)
 
         Button {
           toggleDictation()
@@ -347,9 +379,9 @@ struct HermesChatView: View {
                 .foregroundStyle(dictation.isRecording ? Color.red : Color.secondary)
             }
           }
-          .frame(width: 36, height: 36)
+          .frame(width: 44, height: 44)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(LiquidPressButtonStyle())
         .disabled(dictation.isTranscribing)
         .accessibilityLabel(dictationButtonLabel)
         .help(dictationButtonHelp)
@@ -364,7 +396,7 @@ struct HermesChatView: View {
     .padding(.horizontal, 18)
     .padding(.top, 8)
     .padding(.bottom, 14)
-    .background(.clear)
+    .background(.bar)
   }
 
   private func select(_ command: SlashCommandSuggestion, in currentText: String? = nil) {
@@ -392,7 +424,9 @@ struct HermesChatView: View {
   }
 
   private var canSendMessage: Bool {
-    (!draft.trimmed.isEmpty || !attachments.isEmpty) && !dictation.isTranscribing
+    (!draft.trimmed.isEmpty || !attachments.isEmpty)
+      && !dictation.isTranscribing
+      && !isHermesRunning
   }
 
   private var composerStatus: String? {
@@ -476,6 +510,9 @@ struct HermesChatView: View {
   }
 
   private func syncTelegram(silent: Bool) async {
+    guard !isSyncingTelegram else { return }
+    isSyncingTelegram = true
+    defer { isSyncingTelegram = false }
     let result = await store.syncTelegramMessages()
     if !silent || result.contains("Synced 1") || result.lowercased().contains("error") {
       syncStatus = result
@@ -524,7 +561,7 @@ private struct TranscriptDiagnosticsDisclosure: View {
         .frame(maxWidth: .infinity, minHeight: 28, alignment: .leading)
         .contentShape(Rectangle())
       }
-      .buttonStyle(.plain)
+      .buttonStyle(LiquidPressButtonStyle())
       .help(expanded ? "Hide diagnostics" : "Show diagnostics")
 
       if expanded {
@@ -549,23 +586,31 @@ private struct ComposerIconButton: View {
   let systemName: String
   let accessibilityLabel: String
   let isProminent: Bool
+  var isLoading = false
   let action: () -> Void
 
   var body: some View {
     Button(action: action) {
-      Image(systemName: systemName)
-        .font(.system(size: 14, weight: .semibold))
-        .frame(width: 36, height: 36)
-        .contentShape(RoundedRectangle(cornerRadius: 6))
+      Group {
+        if isLoading {
+          ProgressView()
+            .controlSize(.small)
+        } else {
+          Image(systemName: systemName)
+            .font(.system(size: 14, weight: .semibold))
+        }
+      }
+      .frame(width: 44, height: 44)
+      .contentShape(RoundedRectangle(cornerRadius: 10))
     }
-    .buttonStyle(.plain)
+    .buttonStyle(LiquidPressButtonStyle())
     .accessibilityLabel(accessibilityLabel)
-    .foregroundStyle(isProminent ? Color.white : Color.secondary)
-    .background(isProminent ? Color.accentColor : Color.clear)
-    .clipShape(RoundedRectangle(cornerRadius: 6))
+    .foregroundStyle(isProminent ? AppTheme.accentForeground : Color.secondary)
+    .background(isProminent ? AppTheme.accent : Color.clear)
+    .clipShape(RoundedRectangle(cornerRadius: 10))
     .overlay(
-      RoundedRectangle(cornerRadius: 6)
-        .stroke(isProminent ? Color.accentColor : Color.clear, lineWidth: 1)
+      RoundedRectangle(cornerRadius: 10)
+        .stroke(isProminent ? AppTheme.accent : Color.clear, lineWidth: 1)
     )
   }
 }
@@ -692,7 +737,7 @@ private struct SlashCommandPicker: View {
             .clipShape(RoundedRectangle(cornerRadius: 5))
             .overlay(RoundedRectangle(cornerRadius: 5).stroke(.separator, lineWidth: 1))
           }
-          .buttonStyle(.plain)
+          .buttonStyle(LiquidPressButtonStyle())
           .help("\(command.trigger)\(command.id): \(command.detail)")
         }
       }

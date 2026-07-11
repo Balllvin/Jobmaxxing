@@ -63,32 +63,48 @@ struct SettingsView: View {
   }
 
   var body: some View {
-    HStack(spacing: 0) {
-      SettingsSidebar(selectedPage: $selectedPage, onBack: onBack)
-        .frame(width: 220)
-        .frame(maxHeight: .infinity, alignment: .top)
-
-      Divider()
-
-      if selectedPage == .connections || selectedPage == .codeHelp {
-        selectedContent
-          .padding(.horizontal, 28)
-          .padding(.vertical, 24)
-          .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-      } else {
-        ScrollView {
-          VStack(alignment: .leading, spacing: 18) {
-            selectedContent
-          }
-          .padding(.horizontal, 28)
-          .padding(.vertical, 24)
-          .frame(maxWidth: .infinity, alignment: .topLeading)
+    GeometryReader { proxy in
+      if proxy.size.width < 760 {
+        VStack(spacing: 0) {
+          SettingsCompactHeader(selectedPage: $selectedPage, onBack: onBack)
+          Divider()
+          detailSurface(compact: true)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+      } else {
+        HStack(spacing: 0) {
+          SettingsSidebar(selectedPage: $selectedPage, onBack: onBack)
+            .frame(width: 220)
+            .frame(maxHeight: .infinity, alignment: .top)
+
+          Divider()
+          detailSurface(compact: false)
+        }
       }
     }
     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-    .background(AppTheme.canvas)
+    .background(AppBackdrop())
+  }
+
+  @ViewBuilder
+  private func detailSurface(compact: Bool) -> some View {
+    let horizontalPadding: CGFloat = compact ? 16 : 28
+    let verticalPadding: CGFloat = compact ? 16 : 24
+    if selectedPage == .connections || selectedPage == .codeHelp {
+      selectedContent
+        .padding(.horizontal, horizontalPadding)
+        .padding(.vertical, verticalPadding)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    } else {
+      ScrollView {
+        VStack(alignment: .leading, spacing: 18) {
+          selectedContent
+        }
+        .padding(.horizontal, horizontalPadding)
+        .padding(.vertical, verticalPadding)
+        .frame(maxWidth: .infinity, alignment: .topLeading)
+      }
+      .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
   }
 
   @ViewBuilder
@@ -124,6 +140,35 @@ struct SettingsView: View {
   }
 }
 
+private struct SettingsCompactHeader: View {
+  @Binding var selectedPage: SettingsPage
+  let onBack: (() -> Void)?
+
+  var body: some View {
+    HStack(spacing: 10) {
+      if let onBack {
+        Button(action: onBack) {
+          Image(systemName: "chevron.left")
+            .frame(width: 44, height: 44)
+        }
+        .buttonStyle(LiquidPressButtonStyle())
+        .accessibilityLabel("Back")
+      }
+
+      Picker("Settings page", selection: $selectedPage) {
+        ForEach(SettingsPage.allCases) { page in
+          Label(page.title, systemImage: page.systemImage).tag(page)
+        }
+      }
+      .pickerStyle(.menu)
+
+      Spacer(minLength: 0)
+    }
+    .padding(.horizontal, 12)
+    .frame(minHeight: 52)
+  }
+}
+
 private struct SettingsSidebar: View {
   @Binding var selectedPage: SettingsPage
   let onBack: (() -> Void)?
@@ -143,13 +188,13 @@ private struct SettingsSidebar: View {
           }
           .foregroundStyle(Color.primary)
           .padding(.horizontal, 10)
-          .frame(height: 38)
+          .frame(minHeight: 44)
           .frame(maxWidth: .infinity, alignment: .leading)
           .background(hoveringBack ? AppTheme.hoverFill : Color.clear)
           .clipShape(RoundedRectangle(cornerRadius: 6))
           .contentShape(RoundedRectangle(cornerRadius: 6))
         }
-        .buttonStyle(.plain)
+        .buttonStyle(LiquidPressButtonStyle())
         .onHover { hoveringBack = $0 }
         .padding(.horizontal, 10)
         .padding(.top, 14)
@@ -173,7 +218,7 @@ private struct SettingsSidebar: View {
         .padding(.top, 10)
       }
     }
-    .background(AppTheme.canvas)
+    .background(.bar)
   }
 }
 
@@ -181,29 +226,27 @@ private struct SettingsSidebarButton: View {
   let page: SettingsPage
   let isSelected: Bool
   let action: () -> Void
-  @State private var isHovering = false
-
   var body: some View {
-    HStack(alignment: .center, spacing: 11) {
-      Image(systemName: page.systemImage)
-        .font(.system(size: 15, weight: .medium))
-        .frame(width: 20)
-      Text(page.title)
-        .font(.system(size: 15, weight: isSelected ? .semibold : .medium))
-        .lineLimit(1)
-      Spacer(minLength: 0)
+    Button(action: action) {
+      HStack(alignment: .center, spacing: 11) {
+        Image(systemName: page.systemImage)
+          .font(.system(size: 15, weight: .medium))
+          .frame(width: 20)
+        Text(page.title)
+          .font(.system(size: 15, weight: isSelected ? .semibold : .medium))
+          .lineLimit(1)
+        Spacer(minLength: 0)
+      }
+      .foregroundStyle(isSelected ? Color.primary : Color.secondary)
+      .padding(.horizontal, 10)
+      .frame(minHeight: 44)
+      .frame(maxWidth: .infinity, alignment: .leading)
+      .modifier(SelectedRowSurface(isSelected: isSelected))
+      .contentShape(RoundedRectangle(cornerRadius: 8))
     }
-    .foregroundStyle(isSelected ? Color.primary : Color.secondary)
-    .padding(.horizontal, 10)
-    .frame(height: 36)
-    .frame(maxWidth: .infinity, alignment: .leading)
-    .background(isHovering && !isSelected ? AppTheme.hoverFill : Color.clear)
-    .modifier(SelectedRowSurface(isSelected: isSelected))
-    .contentShape(RoundedRectangle(cornerRadius: 6))
-    .onTapGesture(perform: action)
-    .onHover { isHovering = $0 }
-    .accessibilityAddTraits(.isButton)
+    .buttonStyle(LiquidPressButtonStyle())
     .accessibilityLabel(page.title)
+    .accessibilityValue(isSelected ? "Selected" : "")
   }
 }
 
@@ -261,30 +304,38 @@ private struct ModelProvidersSettingsPage: View {
       Text("Model tiers")
         .font(.title3.weight(.semibold))
 
-      // Column headers for the rails
-      HStack(spacing: 12) {
-        Text("Tier")
-          .frame(width: 100, alignment: .leading)
-        Text("Provider")
-          .frame(maxWidth: .infinity, alignment: .leading)
-        Text("Model")
-          .frame(maxWidth: .infinity, alignment: .leading)
-        Text("Effort")
-          .frame(width: 120, alignment: .leading)
-        Text("Status")
-          .frame(width: 56, alignment: .center)
+      ViewThatFits(in: .horizontal) {
+        HStack(spacing: 12) {
+          Text("Tier")
+            .frame(width: 100, alignment: .leading)
+          Text("Provider")
+            .frame(maxWidth: .infinity, alignment: .leading)
+          Text("Model")
+            .frame(maxWidth: .infinity, alignment: .leading)
+          Text("Effort")
+            .frame(width: 120, alignment: .leading)
+          Text("On")
+            .frame(width: 52, alignment: .center)
+          Text("Status")
+            .frame(width: 56, alignment: .center)
+        }
+        .frame(minWidth: 760)
+
+        Text("Choose the provider, model, and effort for each workload.")
       }
       .font(.caption.weight(.semibold))
       .foregroundStyle(.secondary)
       .padding(.horizontal, 14)
 
-      VStack(spacing: 10) {
-        ForEach(tierRoutes) { route in
-          ModelTierRail(
-            route: routeBinding(route),
-            connectors: store.integrationConnectors,
-            onOpenProviderConnection: onOpenProviderConnection
-          )
+      LiquidGlassContainer(spacing: 10) {
+        VStack(spacing: 10) {
+          ForEach(tierRoutes) { route in
+            ModelTierRail(
+              route: routeBinding(route),
+              connectors: store.integrationConnectors,
+              onOpenProviderConnection: onOpenProviderConnection
+            )
+          }
         }
       }
     }
@@ -401,97 +452,153 @@ private struct ModelTierRail: View {
   }
 
   var body: some View {
-    HStack(alignment: .center, spacing: 12) {
-      HStack(spacing: 5) {
-        Text(modelTierTitle(for: route.id))
-          .font(.headline)
-        Image(systemName: "info.circle")
-          .font(.caption)
-          .foregroundStyle(.secondary)
-          .help(tierUsageHelp)
-          .accessibilityLabel("What \(modelTierTitle(for: route.id)) is used for")
-          .accessibilityHint(tierUsageHelp)
+    ViewThatFits(in: .horizontal) {
+      HStack(alignment: .center, spacing: 12) {
+        tierLabel
+          .frame(width: 100, alignment: .leading)
+        providerPicker
+        modelPicker
+        refreshButton
+        reasoningControl
+          .frame(width: 120, alignment: .leading)
+        enableToggle
+          .frame(width: 52, alignment: .center)
+        statusButton
+          .frame(width: 56, alignment: .center)
       }
-      .frame(width: 100, alignment: .leading)
+      .frame(minWidth: 760)
 
-      Picker("Provider", selection: providerID) {
-        ForEach(selectableProviders) { provider in
-          Text(providerDisplayName(provider)).tag(provider.id)
+      VStack(alignment: .leading, spacing: 10) {
+        HStack(spacing: 8) {
+          tierLabel
+          Spacer(minLength: 8)
+          enableToggle
+          statusButton
         }
-      }
-      .labelsHidden()
-      .pickerStyle(.menu)
-      .frame(maxWidth: .infinity, alignment: .leading)
-
-      Picker("Model", selection: modelID) {
-        ForEach(modelChoices) { model in
-          Text(model.label).tag(model.id)
+        LabeledContent("Provider") {
+          providerPicker
         }
-      }
-      .labelsHidden()
-      .pickerStyle(.menu)
-      .frame(maxWidth: .infinity, alignment: .leading)
-      .disabled(modelChoices.isEmpty)
-
-      Button {
-        guard !isRefreshing else { return }
-        isRefreshing = true
-        Task { @MainActor in
-          await store.refreshModelInventory(for: currentProvider)
-          isRefreshing = false
-        }
-      } label: {
-        Image(systemName: "arrow.clockwise")
-          .font(.system(size: 13, weight: .semibold))
-          .frame(width: 28, height: 28)
-      }
-      .buttonStyle(.plain)
-      .disabled(isRefreshing)
-      .help(store.modelInventoryMessage(for: currentProvider.id) ?? "Refresh models from \(currentProvider.name)")
-      .accessibilityLabel("Refresh \(currentProvider.name) models")
-
-      Group {
-        if reasoningChoices.isEmpty {
-          Text("—")
-            .font(.caption)
-            .foregroundStyle(.secondary)
-            .frame(maxWidth: .infinity, alignment: .leading)
-        } else {
-          Picker("Effort", selection: reasoningID) {
-            ForEach(reasoningChoices) { effort in
-              Text(effort.label).tag(effort.id)
-            }
+        LabeledContent("Model") {
+          HStack(spacing: 6) {
+            modelPicker
+            refreshButton
           }
-          .labelsHidden()
-          .pickerStyle(.menu)
-          .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        if !reasoningChoices.isEmpty {
+          LabeledContent("Effort") {
+            reasoningControl
+          }
         }
       }
-      .frame(width: 120, alignment: .leading)
-
-      Button {
-        onOpenProviderConnection(currentProvider.id)
-      } label: {
-        Image(systemName: detection.systemImage)
-          .font(.system(size: 16, weight: .semibold))
-          .foregroundStyle(detection.tint)
-          .frame(width: 28, height: 28)
-          .contentShape(Rectangle())
-      }
-      .buttonStyle(.plain)
-      .help(statusHelp)
-      .accessibilityLabel(detection.title)
-      .accessibilityHint("Opens \(currentProvider.name) in Connections")
-      .frame(width: 56, alignment: .center)
     }
     .padding(.horizontal, 14)
     .padding(.vertical, 12)
-    .background(AppTheme.panel)
-    .clipShape(RoundedRectangle(cornerRadius: 8))
-    .overlay(
-      RoundedRectangle(cornerRadius: 8)
-        .stroke(.separator, lineWidth: 1)
-    )
+    .liquidGlassSurface(.regular, cornerRadius: AppTheme.radiusMedium, isInteractive: true)
+  }
+
+  private var tierLabel: some View {
+    HStack(spacing: 5) {
+      Text(modelTierTitle(for: route.id))
+        .font(.headline)
+      Image(systemName: "info.circle")
+        .font(.caption)
+        .foregroundStyle(.secondary)
+        .help(tierUsageHelp)
+        .accessibilityLabel("What \(modelTierTitle(for: route.id)) is used for")
+        .accessibilityHint(tierUsageHelp)
+    }
+  }
+
+  private var providerPicker: some View {
+    Picker("Provider", selection: providerID) {
+      ForEach(selectableProviders) { provider in
+        Text(providerDisplayName(provider)).tag(provider.id)
+      }
+    }
+    .labelsHidden()
+    .pickerStyle(.menu)
+    .frame(maxWidth: .infinity, alignment: .leading)
+  }
+
+  private var modelPicker: some View {
+    Picker("Model", selection: modelID) {
+      ForEach(modelChoices) { model in
+        Text(model.label).tag(model.id)
+      }
+    }
+    .labelsHidden()
+    .pickerStyle(.menu)
+    .frame(maxWidth: .infinity, alignment: .leading)
+    .disabled(modelChoices.isEmpty)
+  }
+
+  private var refreshButton: some View {
+    Button {
+      guard !isRefreshing else { return }
+      isRefreshing = true
+      Task { @MainActor in
+        await store.refreshModelInventory(for: currentProvider)
+        isRefreshing = false
+      }
+    } label: {
+      if isRefreshing {
+        ProgressView()
+          .controlSize(.small)
+          .frame(width: 44, height: 44)
+      } else {
+        Image(systemName: "arrow.clockwise")
+          .font(.system(size: 13, weight: .semibold))
+          .frame(width: 44, height: 44)
+      }
+    }
+    .buttonStyle(LiquidPressButtonStyle())
+    .disabled(isRefreshing)
+    .help(store.modelInventoryMessage(for: currentProvider.id) ?? "Refresh models from \(currentProvider.name)")
+    .accessibilityLabel(isRefreshing ? "Refreshing \(currentProvider.name) models" : "Refresh \(currentProvider.name) models")
+  }
+
+  @ViewBuilder
+  private var reasoningControl: some View {
+    if reasoningChoices.isEmpty {
+      Text("—")
+        .font(.caption)
+        .foregroundStyle(.secondary)
+        .frame(maxWidth: .infinity, alignment: .leading)
+    } else {
+      Picker("Effort", selection: reasoningID) {
+        ForEach(reasoningChoices) { effort in
+          Text(effort.label).tag(effort.id)
+        }
+      }
+      .labelsHidden()
+      .pickerStyle(.menu)
+      .frame(maxWidth: .infinity, alignment: .leading)
+    }
+  }
+
+  private var statusButton: some View {
+    Button {
+      onOpenProviderConnection(currentProvider.id)
+    } label: {
+      Image(systemName: detection.systemImage)
+        .font(.system(size: 16, weight: .semibold))
+        .foregroundStyle(detection.tint)
+        .frame(width: 44, height: 44)
+        .contentShape(Rectangle())
+    }
+    .buttonStyle(LiquidPressButtonStyle())
+    .help(statusHelp)
+    .accessibilityLabel(detection.title)
+    .accessibilityHint("Opens \(currentProvider.name) in Connections")
+  }
+
+  private var enableToggle: some View {
+    Toggle("Enable \(modelTierTitle(for: route.id))", isOn: $route.isEnabled)
+      .labelsHidden()
+      .toggleStyle(.switch)
+      .controlSize(.small)
+      .help(route.isEnabled ? "Turn off this route" : "Enable this route")
+      .accessibilityLabel("Enable \(modelTierTitle(for: route.id)) route")
   }
 
   private func providerDisplayName(_ provider: ModelProviderChoice) -> String {
@@ -650,53 +757,19 @@ private struct ConnectionsSettingsPage: View {
   }
 
   var body: some View {
-    HStack(alignment: .top, spacing: 16) {
-      VStack(alignment: .leading, spacing: 12) {
-        Text(connectionSummary)
-          .font(.caption)
-          .foregroundStyle(.secondary)
-          .fixedSize(horizontal: false, vertical: true)
-
-        ScrollView {
-          LazyVStack(alignment: .leading, spacing: 16) {
-            ConnectorGroup(
-              state: .ready,
-              connectors: readyConnectors,
-              selectedConnectorID: selectedConnectorID,
-              onSelect: { selectedConnectorID = $0 }
-            )
-            ConnectorGroup(
-              state: .setupRequired,
-              connectors: setupConnectors,
-              selectedConnectorID: selectedConnectorID,
-              onSelect: { selectedConnectorID = $0 }
-            )
-            ConnectorGroup(
-              state: .off,
-              connectors: offConnectors,
-              selectedConnectorID: selectedConnectorID,
-              onSelect: { selectedConnectorID = $0 }
-            )
-            if !hiddenConnectors.isEmpty {
-              HiddenConnectorList(connectors: hiddenConnectors) { connectorID in
-                store.setConnectorHidden(id: connectorID, isHidden: false)
-                selectedConnectorID = connectorID
-              }
-            }
-          }
-          .padding(.trailing, 4)
-        }
-        .scrollIndicators(.visible)
+    ViewThatFits(in: .horizontal) {
+      HStack(alignment: .top, spacing: 16) {
+        connectorList
+          .frame(width: 380, alignment: .topLeading)
+        connectorDetail
       }
-      .frame(width: 380, alignment: .topLeading)
-      .frame(maxHeight: .infinity, alignment: .topLeading)
+      .frame(minWidth: 780)
 
-      if let selectedConnector {
-        ConnectorDetailPanel(connector: selectedConnector)
-          .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-      } else {
-        EmptyPanel(title: "No connections", detail: "Add the connectors you use for models, documents, mail, proof, and local context.")
-          .frame(maxWidth: .infinity, alignment: .topLeading)
+      VStack(alignment: .leading, spacing: 12) {
+        connectorList
+          .frame(maxWidth: .infinity, minHeight: 190, maxHeight: 260, alignment: .topLeading)
+        Divider()
+        connectorDetail
       }
     }
     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
@@ -713,8 +786,61 @@ private struct ConnectionsSettingsPage: View {
     }
   }
 
+  private var connectorList: some View {
+    VStack(alignment: .leading, spacing: 12) {
+      Text(connectionSummary)
+        .font(.caption)
+        .foregroundStyle(.secondary)
+        .fixedSize(horizontal: false, vertical: true)
+
+      ScrollView {
+        LazyVStack(alignment: .leading, spacing: 16) {
+          ConnectorGroup(
+            state: .ready,
+            connectors: readyConnectors,
+            selectedConnectorID: selectedConnectorID,
+            onSelect: { selectedConnectorID = $0 }
+          )
+          ConnectorGroup(
+            state: .setupRequired,
+            connectors: setupConnectors,
+            selectedConnectorID: selectedConnectorID,
+            onSelect: { selectedConnectorID = $0 }
+          )
+          ConnectorGroup(
+            state: .off,
+            connectors: offConnectors,
+            selectedConnectorID: selectedConnectorID,
+            onSelect: { selectedConnectorID = $0 }
+          )
+          if !hiddenConnectors.isEmpty {
+            HiddenConnectorList(connectors: hiddenConnectors) { connectorID in
+              store.setConnectorHidden(id: connectorID, isHidden: false)
+              selectedConnectorID = connectorID
+            }
+          }
+        }
+        .padding(.trailing, 4)
+      }
+      .scrollIndicators(.visible)
+    }
+    .frame(maxHeight: .infinity, alignment: .topLeading)
+  }
+
+  @ViewBuilder
+  private var connectorDetail: some View {
+    if let selectedConnector {
+      ConnectorDetailPanel(connector: selectedConnector)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    } else {
+      EmptyPanel(title: "No connections", detail: "Add the connectors you use for models, documents, mail, proof, and local context.")
+        .frame(maxWidth: .infinity, alignment: .topLeading)
+    }
+  }
+
   private func applyFocusedConnectorIfNeeded() {
     guard let focusedConnectorID, !focusedConnectorID.isEmpty else { return }
+    defer { self.focusedConnectorID = nil }
     // Unhide if the Models page deep-linked a hidden connector.
     if store.integrationConnectors.first(where: { $0.id == focusedConnectorID })?.isHidden == true {
       store.setConnectorHidden(id: focusedConnectorID, isHidden: false)
@@ -822,12 +948,7 @@ private struct ConnectorGroup: View {
             }
           }
         }
-        .background(.background)
-        .clipShape(RoundedRectangle(cornerRadius: 6))
-        .overlay(
-          RoundedRectangle(cornerRadius: 6)
-            .stroke(.separator, lineWidth: 1)
-        )
+        .liquidGlassSurface(.strong, cornerRadius: AppTheme.radiusSmall)
       }
     }
   }
@@ -875,6 +996,9 @@ private struct PermissionsSettingsPage: View {
 
 private struct ProfileSettings: View {
   @EnvironmentObject private var store: JobmaxxingStore
+  @State private var profileDraft: CandidateProfile?
+  @State private var isProfileDirty = false
+  @State private var profileSaveStatus = ""
   @State private var linkedInURL = ""
   @State private var memoryKind = "Preference"
   @State private var memoryTitle = ""
@@ -916,28 +1040,38 @@ private struct ProfileSettings: View {
 
       SettingsFlatSection(title: "Profile") {
         HStack {
+          if isProfileDirty {
+            Text("Unsaved edits")
+              .font(.caption)
+              .foregroundStyle(.secondary)
+          } else if !profileSaveStatus.isEmpty {
+            Text(profileSaveStatus)
+              .font(.caption)
+              .foregroundStyle(.secondary)
+          }
           Spacer()
           ImproveTextControl(
-            currentText: store.state.profile.about ?? "",
+            currentText: editableProfile.about ?? "",
             context: [
-              "Name: \(store.state.profile.name)",
-              "Headline: \(store.state.profile.headline ?? "")",
-              "Targets: \(store.state.profile.targetRoles.compactJoined)",
-              "Locations: \(store.state.profile.locations.compactJoined)",
-              "Authorization: \(store.state.profile.workAuthorization)",
-              "Compensation: \(store.state.profile.compensationGoal)"
+              "Name: \(editableProfile.name)",
+              "Headline: \(editableProfile.headline ?? "")",
+              "Targets: \(editableProfile.targetRoles.compactJoined)",
+              "Locations: \(editableProfile.locations.compactJoined)",
+              "Authorization: \(editableProfile.workAuthorization)",
+              "Compensation: \(editableProfile.compensationGoal)"
             ].joined(separator: "\n"),
             kind: "about me profile",
             onApply: { value in
-              var profile = store.state.profile
+              var profile = editableProfile
               profile.about = value.trimmed.isEmpty ? nil : value
-              store.updateProfile(profile)
+              profileDraft = profile
+              isProfileDirty = true
             }
           )
         }
         TextField("About me", text: optionalProfileStringBinding(\.about), axis: .vertical)
           .lineLimit(5...9)
-        if (store.state.profile.about ?? "").trimmed.isEmpty {
+        if (editableProfile.about ?? "").trimmed.isEmpty {
           Text(profileBriefGuidance)
             .font(.caption)
             .foregroundStyle(.secondary)
@@ -962,6 +1096,14 @@ private struct ProfileSettings: View {
             TextField("Target locations, comma-separated", text: stringArrayBinding(\.locations))
             TextField("Work authorization rule", text: profileStringBinding(\.workAuthorization))
             TextField("Compensation rule", text: profileStringBinding(\.compensationGoal))
+
+            Button {
+              saveProfileDraft()
+            } label: {
+              Label("Save profile changes", systemImage: "checkmark")
+            }
+            .buttonStyle(.borderedProminent)
+            .disabled(!isProfileDirty)
           }
           .padding(.top, 6)
         }
@@ -1054,6 +1196,14 @@ private struct ProfileSettings: View {
     }
     .onAppear {
       linkedInURL = store.state.profile.linkedInURL ?? ""
+      if profileDraft == nil {
+        profileDraft = store.state.profile
+      }
+    }
+    .onDisappear {
+      if isProfileDirty {
+        saveProfileDraft()
+      }
     }
   }
 
@@ -1062,7 +1212,7 @@ private struct ProfileSettings: View {
   }
 
   private var profileSummaryRows: [(label: String, value: String)] {
-    let profile = store.state.profile
+    let profile = editableProfile
     return [
       ("Name", profile.name),
       ("Positioning", profile.headline ?? ""),
@@ -1073,38 +1223,64 @@ private struct ProfileSettings: View {
     ]
   }
 
+  private var editableProfile: CandidateProfile {
+    profileDraft ?? store.state.profile
+  }
+
+  private func saveProfileDraft() {
+    guard let draft = profileDraft else { return }
+    var profile = store.state.profile
+    profile.name = draft.name
+    profile.headline = draft.headline
+    profile.about = draft.about
+    profile.targetRoles = draft.targetRoles
+    profile.locations = draft.locations
+    profile.workAuthorization = draft.workAuthorization
+    profile.compensationGoal = draft.compensationGoal
+    store.updateProfile(profile)
+    profileDraft = profile
+    isProfileDirty = false
+    profileSaveStatus = "Profile saved."
+  }
+
   private func profileStringBinding(_ keyPath: WritableKeyPath<CandidateProfile, String>) -> Binding<String> {
     Binding(
-      get: { store.state.profile[keyPath: keyPath] },
+      get: { editableProfile[keyPath: keyPath] },
       set: { value in
-        var profile = store.state.profile
+        var profile = editableProfile
         profile[keyPath: keyPath] = value
-        store.updateProfile(profile)
+        profileDraft = profile
+        isProfileDirty = true
+        profileSaveStatus = ""
       }
     )
   }
 
   private func optionalProfileStringBinding(_ keyPath: WritableKeyPath<CandidateProfile, String?>) -> Binding<String> {
     Binding(
-      get: { store.state.profile[keyPath: keyPath] ?? "" },
+      get: { editableProfile[keyPath: keyPath] ?? "" },
       set: { value in
-        var profile = store.state.profile
+        var profile = editableProfile
         profile[keyPath: keyPath] = value.trimmed.isEmpty ? nil : value
-        store.updateProfile(profile)
+        profileDraft = profile
+        isProfileDirty = true
+        profileSaveStatus = ""
       }
     )
   }
 
   private func stringArrayBinding(_ keyPath: WritableKeyPath<CandidateProfile, [String]>) -> Binding<String> {
     Binding(
-      get: { store.state.profile[keyPath: keyPath].joined(separator: ", ") },
+      get: { editableProfile[keyPath: keyPath].joined(separator: ", ") },
       set: { value in
-        var profile = store.state.profile
+        var profile = editableProfile
         profile[keyPath: keyPath] = value
           .split(separator: ",")
           .map { String($0).trimmed }
           .filter { !$0.isEmpty }
-        store.updateProfile(profile)
+        profileDraft = profile
+        isProfileDirty = true
+        profileSaveStatus = ""
       }
     )
   }
@@ -1306,31 +1482,33 @@ private struct ConnectorRow: View {
   let onSelect: () -> Void
 
   var body: some View {
-    HStack(alignment: .center, spacing: 10) {
-      ConnectorStatusGlyph(state: connectorState(connector))
-      VStack(alignment: .leading, spacing: 5) {
-        Text(connector.label)
-          .font(.subheadline.weight(.semibold))
-          .lineLimit(1)
-        Text(connectorRowSentence(connector))
-          .font(.caption)
-          .foregroundStyle(.secondary)
-          .lineLimit(2)
-          .fixedSize(horizontal: false, vertical: true)
+    Button(action: onSelect) {
+      HStack(alignment: .center, spacing: 10) {
+        ConnectorStatusGlyph(state: connectorState(connector))
+        VStack(alignment: .leading, spacing: 5) {
+          Text(connector.label)
+            .font(.subheadline.weight(.semibold))
+            .lineLimit(1)
+          Text(connectorRowSentence(connector))
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .lineLimit(2)
+            .fixedSize(horizontal: false, vertical: true)
+        }
+        Spacer()
+        Image(systemName: "chevron.right")
+          .font(.caption.weight(.semibold))
+          .foregroundStyle(.tertiary)
       }
-      Spacer()
-      Image(systemName: "chevron.right")
-        .font(.caption.weight(.semibold))
-        .foregroundStyle(.tertiary)
+      .padding(.vertical, 9)
+      .padding(.horizontal, 8)
+      .frame(maxWidth: .infinity, minHeight: 56, alignment: .leading)
+      .contentShape(RoundedRectangle(cornerRadius: 8))
+      .modifier(SelectedRowSurface(isSelected: isSelected))
     }
-    .padding(.vertical, 9)
-    .padding(.horizontal, 8)
-    .frame(maxWidth: .infinity, minHeight: 56, alignment: .leading)
-    .contentShape(RoundedRectangle(cornerRadius: 6))
-    .modifier(SelectedRowSurface(isSelected: isSelected))
-    .onTapGesture(perform: onSelect)
-    .accessibilityAddTraits(.isButton)
+    .buttonStyle(LiquidPressButtonStyle())
     .accessibilityLabel(connector.label)
+    .accessibilityValue(isSelected ? "Selected" : connectorState(connector).title)
   }
 }
 
@@ -1424,12 +1602,7 @@ private struct ConnectorDetailPanel: View {
       }
       .padding(16)
     }
-    .background(AppTheme.panel)
-    .clipShape(RoundedRectangle(cornerRadius: 6))
-    .overlay(
-      RoundedRectangle(cornerRadius: 6)
-        .stroke(.separator, lineWidth: 1)
-    )
+    .liquidGlassSurface(.regular, cornerRadius: AppTheme.radiusMedium)
   }
 }
 
@@ -1464,6 +1637,7 @@ private struct ConnectorActionButtons: View {
   @EnvironmentObject private var store: JobmaxxingStore
   let connector: IntegrationConnector
   @State private var isChecking = false
+  @State private var isConfirmingCredentialForget = false
 
   private var liveConnector: IntegrationConnector {
     store.integrationConnectors.first(where: { $0.id == connector.id }) ?? connector
@@ -1499,13 +1673,25 @@ private struct ConnectorActionButtons: View {
         .disabled(isChecking)
       }
 
-      if connectorCanForgetCredentials(liveConnector) {
+      if store.hasSavedCredentialReference(for: liveConnector.id) {
         Button("Forget saved credentials", role: .destructive) {
-          store.disconnectConnector(id: liveConnector.id)
+          isConfirmingCredentialForget = true
         }
         .buttonStyle(.bordered)
         .disabled(isChecking)
       }
+    }
+    .confirmationDialog(
+      "Forget saved credentials?",
+      isPresented: $isConfirmingCredentialForget,
+      titleVisibility: .visible
+    ) {
+      Button("Forget credentials", role: .destructive) {
+        store.disconnectConnector(id: liveConnector.id)
+      }
+      Button("Cancel", role: .cancel) {}
+    } message: {
+      Text("Jobmaxxing will remove the locally saved credential reference for \(liveConnector.label). This does not revoke credentials at the provider.")
     }
   }
 
@@ -1525,7 +1711,6 @@ private struct ConnectorActionButtons: View {
     var next = liveConnector
     next.isEnabled = false
     store.updateIntegrationConnector(next)
-    _ = store.refreshIntegrationConnector(id: liveConnector.id)
   }
 
   private func runCheck() {
@@ -1534,7 +1719,7 @@ private struct ConnectorActionButtons: View {
     Task { @MainActor in
       // Yield so the Checking… label paints before slower probes (OpenCode/Cursor).
       await Task.yield()
-      _ = store.refreshIntegrationConnector(id: connectorID)
+      _ = await store.refreshIntegrationConnector(id: connectorID)
       isChecking = false
     }
   }
@@ -1578,46 +1763,106 @@ func connectorSecondaryActionTitle(_ connector: IntegrationConnector) -> String?
   }
 }
 
-func connectorCanForgetCredentials(_ connector: IntegrationConnector) -> Bool {
-  (connector.configFields ?? []).contains { field in
-    let sensitiveField = field.isSecret || field.id.contains("token") || field.id.contains("key")
-    return sensitiveField && !field.value.trimmed.isEmpty
-  }
-}
-
 private struct ConnectorFieldEditor: View {
   @EnvironmentObject private var store: JobmaxxingStore
   let connectorID: String
   let field: ConnectorConfigField
+  @State private var draftValue = ""
+  @State private var isDirty = false
+  @State private var status = ""
 
   var body: some View {
     VStack(alignment: .leading, spacing: 5) {
       Text(field.label.uppercased())
         .font(.caption2.weight(.bold))
         .foregroundStyle(.secondary)
-      if field.isSecret {
-        SecureField(field.placeholder, text: valueBinding)
+      HStack(alignment: .firstTextBaseline, spacing: 8) {
+        TextField(field.placeholder, text: draftBinding)
           .textFieldStyle(.roundedBorder)
-      } else {
-        TextField(field.placeholder, text: valueBinding)
-          .textFieldStyle(.roundedBorder)
+          .onSubmit(save)
+        Button("Save") {
+          save()
+        }
+        .buttonStyle(.bordered)
+        .disabled(!isDirty)
+        .frame(minHeight: 44)
+      }
+      if isSensitiveField {
+        Text("Use the variable name shown, or another environment variable available to this app. Raw tokens and API keys are not saved.")
+          .font(.caption)
+          .foregroundStyle(.secondary)
+      }
+      if !status.isEmpty {
+        Text(status)
+          .font(.caption)
+          .foregroundStyle(status.hasPrefix("Saved") ? Color.secondary : Color.red)
+          .fixedSize(horizontal: false, vertical: true)
+      }
+    }
+    .onAppear(perform: loadValue)
+    .onChange(of: field.value) { _, _ in
+      if !isDirty {
+        loadValue()
+      }
+    }
+    .onDisappear {
+      if isDirty,
+         isValidCredentialReference(draftValue, expectedReference: expectedCredentialReference)
+           || !isSensitiveField {
+        save()
       }
     }
   }
 
-  private var valueBinding: Binding<String> {
+  private var draftBinding: Binding<String> {
     Binding(
-      get: {
-        store.integrationConnectors
-          .first(where: { $0.id == connectorID })?
-          .configFields?
-          .first(where: { $0.id == field.id })?
-          .value ?? field.value
-      },
+      get: { draftValue },
       set: { value in
-        store.updateConnectorConfig(connectorID: connectorID, fieldID: field.id, value: value)
+        draftValue = value
+        isDirty = true
+        status = ""
       }
     )
+  }
+
+  private func loadValue() {
+    let stored = store.integrationConnectors
+      .first(where: { $0.id == connectorID })?
+      .configFields?
+      .first(where: { $0.id == field.id })?
+      .value ?? field.value
+    if isSensitiveField,
+       !isValidCredentialReference(stored, expectedReference: expectedCredentialReference) {
+      draftValue = ""
+      status = "This saved value is not the expected variable name and is not available in this app's environment. It was not deleted. Replace it, or use Forget credentials."
+    } else {
+      draftValue = stored
+      status = ""
+    }
+    isDirty = false
+  }
+
+  private func save() {
+    if isSensitiveField,
+       !isValidCredentialReference(draftValue, expectedReference: expectedCredentialReference) {
+      let expected = expectedCredentialReference ?? "an available environment variable"
+      status = "Use \(expected), or another variable already available to Jobmaxxing. Raw values are rejected."
+      return
+    }
+    if store.updateConnectorConfig(connectorID: connectorID, fieldID: field.id, value: draftValue) {
+      isDirty = false
+      status = "Saved."
+    } else {
+      status = "Could not save this field."
+    }
+  }
+
+  private var isSensitiveField: Bool {
+    field.isSecret || field.id.contains("token") || field.id.contains("key")
+  }
+
+  private var expectedCredentialReference: String? {
+    canonicalCredentialReference(from: field.placeholder)
   }
 }
 
@@ -1756,7 +2001,7 @@ private struct ProfileExperienceRow: View {
       if !item.sourceURL.trimmed.isEmpty {
         Text(item.sourceURL)
           .font(.caption.monospaced())
-          .foregroundStyle(.blue)
+          .foregroundStyle(AppTheme.accent)
           .textSelection(.enabled)
       }
     }
@@ -1952,7 +2197,7 @@ private struct ProjectRow: View {
         Spacer()
         Text(project.url)
           .font(.caption.monospaced())
-          .foregroundStyle(.blue)
+          .foregroundStyle(AppTheme.accent)
           .textSelection(.enabled)
       }
       Text(project.summary)

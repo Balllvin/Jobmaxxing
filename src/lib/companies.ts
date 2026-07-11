@@ -1,7 +1,74 @@
 import type { CompanyProfile, CompanyResearch, CompanyResearchPage, CompanySubmission, JobRecord, JobmaxxingStore } from "./types";
 import { normalizeExternalUrl } from "./urls";
 
-export const defaultCompanyProfiles: CompanyProfile[] = [];
+export const defaultCompanyProfiles: CompanyProfile[] = [
+  {
+    id: "marauder",
+    name: "Marauder",
+    website: "https://marauder-main.up.railway.app",
+    linkedInUrl: "",
+    category: "User proof",
+    size: "Project",
+    headquarters: "Local-first",
+    publicStatus: "Private project",
+    summary: "Finance research workspace with multi-surface product architecture and provider routing.",
+    relationship: "Built by user",
+    applicationIds: [],
+    submittedMaterials: [],
+    people: [],
+    research: knownCompanyResearch("https://marauder-main.up.railway.app", [
+      "Finance research workspace",
+      "Provider-routed research surfaces"
+    ]),
+    nextActions: ["Use as proof for finance, agent, research, backend, frontend, and product roles."],
+    notes: ""
+  },
+  {
+    id: "smaug",
+    name: "Smaug",
+    website: "https://smaug.up.railway.app",
+    linkedInUrl: "",
+    category: "User proof",
+    size: "Project",
+    headquarters: "Local-first",
+    publicStatus: "Private project",
+    summary: "Agent control plane with workflow visibility, tools, memory links, and Telegram intake.",
+    relationship: "Built by user",
+    applicationIds: [],
+    submittedMaterials: [],
+    people: [],
+    research: knownCompanyResearch("https://smaug.up.railway.app", [
+      "Agent control plane",
+      "Workflow runner visibility",
+      "Telegram intent intake"
+    ]),
+    nextActions: ["Use as proof for agent platform and operations automation roles."],
+    notes: ""
+  },
+  {
+    id: "jobmaxxing",
+    name: "Jobmaxxing",
+    website: "https://github.com/Balllvin/Jobmaxxing",
+    linkedInUrl: "",
+    category: "User proof",
+    size: "Open-source project",
+    headquarters: "Local macOS",
+    publicStatus: "Open-source",
+    summary: "Native macOS job-search workspace with company profiles, MCP tools, browser safety gates, and local state.",
+    relationship: "Built by user",
+    applicationIds: [],
+    submittedMaterials: [],
+    people: [],
+    research: knownCompanyResearch("https://github.com/Balllvin/Jobmaxxing", [
+      "Native job-search workspace",
+      "Company profiles",
+      "MCP tools",
+      "Browser safety plans"
+    ]),
+    nextActions: ["Use as proof for native macOS, local-first agents, and hiring workflow roles."],
+    notes: ""
+  }
+];
 
 export function normalizeCompanies(store: Pick<JobmaxxingStore, "companies" | "jobs">): CompanyProfile[] {
   const companies = store.companies?.length ? structuredClone(store.companies) : structuredClone(defaultCompanyProfiles);
@@ -54,12 +121,11 @@ function syncCompanyForJobInPlace(
   }
 
   const company = companies[existingIndex];
-  company.applicationIds = uniqueStrings([...(company.applicationIds ?? []), job.id]);
+  company.applicationIds = uniqueStrings([...company.applicationIds, job.id]);
   company.website = company.website || sourceUrl;
-  company.research = company.research ?? emptyCompanyResearch(company.name, company.website, company.linkedInUrl);
-  company.research.sourceUrls = uniqueStrings([...(company.research.sourceUrls ?? []), sourceUrl].filter(Boolean));
-  company.research.hiringSignals = uniqueStrings([...(company.research.hiringSignals ?? []), ...job.keywords]);
-  company.nextActions = uniqueStrings([...(company.nextActions ?? []), ...job.nextActions]);
+  company.research.sourceUrls = uniqueStrings([...company.research.sourceUrls, sourceUrl].filter(Boolean));
+  company.research.hiringSignals = uniqueStrings([...company.research.hiringSignals, ...job.keywords]);
+  company.nextActions = uniqueStrings([...company.nextActions, ...job.nextActions]);
   companies[existingIndex] = company;
 }
 
@@ -150,6 +216,22 @@ function emptyCompanyResearch(companyName: string, website: string, linkedInUrl:
     openQuestions: ["What does this company do?", "Who should the user talk to?", "Which proof best maps to their work?"],
     sourceUrls: sources,
     agentPlan: companyAgentPlan(website, linkedInUrl)
+  };
+}
+
+function knownCompanyResearch(url: string, products: string[]): CompanyResearch {
+  return {
+    status: "Known from user evidence",
+    confidence: 70,
+    websitePages: [{ id: `company-page-${slug(url)}`, title: "Primary source", url, summary: "Seeded from existing user evidence." }],
+    products,
+    businessModel: "User-built proof project, not an employer.",
+    leadership: [],
+    hiringSignals: products.flatMap((item) => item.toLowerCase().split(/\W+/)).filter(Boolean).slice(0, 8),
+    risks: ["Do not present user-built proof projects as prior employers."],
+    openQuestions: ["Which target companies value this proof most?"],
+    sourceUrls: [url],
+    agentPlan: companyAgentPlan(url, "")
   };
 }
 

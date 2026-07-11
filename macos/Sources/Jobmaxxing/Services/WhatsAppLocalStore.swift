@@ -2,6 +2,7 @@ import Foundation
 import SQLite3
 
 final class WhatsAppLocalStore {
+  private static let retainedMessageLimit = 200
   let databasePath: String
 
   init(databasePath: String) {
@@ -80,9 +81,12 @@ final class WhatsAppLocalStore {
   }
 
   func importThread(_ candidate: WhatsAppThreadCandidate) throws -> WhatsAppThreadProfile {
-    let messages = try loadMessages(chatSessionID: candidate.chatSessionID)
+    let messages = try loadMessages(
+      chatSessionID: candidate.chatSessionID,
+      limit: Self.retainedMessageLimit
+    )
+    let directionCounts = try messageDirectionCounts(chatSessionID: candidate.chatSessionID)
     let outgoing = messages.filter(\.isFromMe)
-    let incoming = messages.filter { !$0.isFromMe }
     let topics = Self.topics(from: messages.map(\.text))
     let style = Self.styleSummary(outgoing: outgoing)
     let relationship = Self.relationshipSummary(displayName: candidate.displayName, messages: messages, topics: topics)
@@ -92,10 +96,10 @@ final class WhatsAppLocalStore {
       displayName: candidate.displayName,
       jid: candidate.jid,
       databasePath: databasePath,
-      messageCount: messages.count,
-      outgoingCount: outgoing.count,
-      incomingCount: incoming.count,
-      lastMessagePreview: candidate.lastMessagePreview,
+      messageCount: max(candidate.messageCount, directionCounts.outgoing + directionCounts.incoming),
+      outgoingCount: directionCounts.outgoing,
+      incomingCount: directionCounts.incoming,
+      lastMessagePreview: messages.last?.text ?? candidate.lastMessagePreview,
       styleSummary: style,
       relationshipSummary: relationship,
       topics: topics,
@@ -104,9 +108,9 @@ final class WhatsAppLocalStore {
       suggestedDirectMessage: "",
       suggestedEmailMessage: "",
       allowedForAI: true,
-      messages: messages.enumerated().map { index, message in
+      messages: messages.map { message in
         WhatsAppThreadMessage(
-          id: "\(candidate.id)-\(index)",
+          id: "\(candidate.id)-\(message.rowID)",
           isFromMe: message.isFromMe,
           text: message.text,
           senderName: message.senderName,
@@ -116,11 +120,12 @@ final class WhatsAppLocalStore {
     )
   }
 
-  private func loadMessages(chatSessionID: Int64) throws -> [WhatsAppLocalMessage] {
+  private func loadMessages(chatSessionID: Int64, limit: Int) throws -> [WhatsAppLocalMessage] {
     try withDatabase { database in
       var statement: OpaquePointer?
       let sql = """
       SELECT
+        Z_PK,
         COALESCE(ZISFROMME, 0),
         COALESCE(ZTEXT, ''),
         COALESCE(ZPUSHNAME, ''),
@@ -130,7 +135,8 @@ final class WhatsAppLocalStore {
       WHERE ZCHATSESSION = ?
         AND ZTEXT IS NOT NULL
         AND length(trim(ZTEXT)) > 0
-      ORDER BY COALESCE(ZMESSAGEDATE, 0) ASC, Z_PK ASC
+      ORDER BY COALESCE(ZMESSAGEDATE, 0) DESC, Z_PK DESC
+      LIMIT ?
       """
       guard sqlite3_prepare_v2(database, sql, -1, &statement, nil) == SQLITE_OK, let statement else {
         throw WhatsAppLocalStoreError.statement(Self.errorMessage(database))
@@ -138,23 +144,53 @@ final class WhatsAppLocalStore {
       defer { sqlite3_finalize(statement) }
 
       sqlite3_bind_int64(statement, 1, chatSessionID)
+      sqlite3_bind_int(statement, 2, Int32(max(1, limit)))
 
       var messages: [WhatsAppLocalMessage] = []
       while sqlite3_step(statement) == SQLITE_ROW {
-        let isFromMe = sqlite3_column_int(statement, 0) == 1
-        let text = Self.columnString(statement, 1).trimmed
+        let rowID = sqlite3_column_int64(statement, 0)
+        let isFromMe = sqlite3_column_int(statement, 1) == 1
+        let text = Self.columnString(statement, 2).trimmed
         guard !text.isEmpty else { continue }
         messages.append(
           WhatsAppLocalMessage(
+            rowID: rowID,
             isFromMe: isFromMe,
             text: text,
-            senderName: Self.columnString(statement, 2),
-            senderJID: Self.columnString(statement, 3),
-            rawTimestamp: sqlite3_column_double(statement, 4)
+            senderName: Self.columnString(statement, 3),
+            senderJID: Self.columnString(statement, 4),
+            rawTimestamp: sqlite3_column_double(statement, 5)
           )
         )
       }
-      return messages
+      return Array(messages.reversed())
+    }
+  }
+
+  private func messageDirectionCounts(chatSessionID: Int64) throws -> (outgoing: Int, incoming: Int) {
+    try withDatabase { database in
+      var statement: OpaquePointer?
+      let sql = """
+      SELECT
+        SUM(CASE WHEN COALESCE(ZISFROMME, 0) = 1 THEN 1 ELSE 0 END),
+        SUM(CASE WHEN COALESCE(ZISFROMME, 0) = 0 THEN 1 ELSE 0 END)
+      FROM ZWAMESSAGE
+      WHERE ZCHATSESSION = ?
+        AND ZTEXT IS NOT NULL
+        AND length(trim(ZTEXT)) > 0
+      """
+      guard sqlite3_prepare_v2(database, sql, -1, &statement, nil) == SQLITE_OK, let statement else {
+        throw WhatsAppLocalStoreError.statement(Self.errorMessage(database))
+      }
+      defer { sqlite3_finalize(statement) }
+      sqlite3_bind_int64(statement, 1, chatSessionID)
+      guard sqlite3_step(statement) == SQLITE_ROW else {
+        throw WhatsAppLocalStoreError.statement(Self.errorMessage(database))
+      }
+      return (
+        outgoing: Int(sqlite3_column_int(statement, 0)),
+        incoming: Int(sqlite3_column_int(statement, 1))
+      )
     }
   }
 
@@ -250,6 +286,7 @@ final class WhatsAppLocalStore {
 }
 
 private struct WhatsAppLocalMessage {
+  var rowID: Int64
   var isFromMe: Bool
   var text: String
   var senderName: String

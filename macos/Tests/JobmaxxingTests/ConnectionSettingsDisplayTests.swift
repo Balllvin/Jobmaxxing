@@ -45,11 +45,64 @@ final class ConnectionSettingsDisplayTests: XCTestCase {
   func testSetupGuidanceCoversCoreModelConnectors() {
     let openai = connector(id: "openai", label: "OpenAI", isEnabled: true, isConnected: false)
     let xai = connector(id: "xai", label: "Grok", isEnabled: true, isConnected: false)
-    let opencode = connector(id: "opencode", label: "OpenCode", isEnabled: true, isConnected: false)
+    let go = connector(id: "opencode-go", label: "OpenCode Go", isEnabled: true, isConnected: false)
+    let zen = connector(id: "opencode-zen", label: "OpenCode Zen", isEnabled: true, isConnected: false)
 
     XCTAssertTrue(JobmaxxingStore.connectorSetupGuidance(for: openai).contains("OPENAI_API_KEY"))
     XCTAssertTrue(JobmaxxingStore.connectorSetupGuidance(for: xai).contains("XAI_API_KEY"))
-    XCTAssertTrue(JobmaxxingStore.connectorSetupGuidance(for: opencode).contains("8787"))
+    XCTAssertTrue(JobmaxxingStore.connectorSetupGuidance(for: go).contains("OpenCode Go"))
+    XCTAssertTrue(JobmaxxingStore.connectorSetupGuidance(for: zen).contains("OpenCode Zen"))
+  }
+
+  func testOpenCodeGoAndZenHaveIndependentCatalogs() {
+    let go = try! XCTUnwrap(ModelCatalog.provider(id: "opencode-go"))
+    let zen = try! XCTUnwrap(ModelCatalog.provider(id: "opencode-zen"))
+
+    XCTAssertNotEqual(go.id, zen.id)
+    XCTAssertTrue(go.models.contains(where: { $0.id == "deepseek-v4-flash" }))
+    XCTAssertTrue(go.models.contains(where: { $0.id == "qwen3.7-plus" }))
+    XCTAssertTrue(zen.models.contains(where: { $0.id == "gpt-5.5" }))
+    XCTAssertTrue(zen.models.contains(where: { $0.id == "claude-opus-4-8" }))
+  }
+
+  func testDiscoveredModelRemainsSelectableOutsideFallbackCatalog() {
+    let provider = try! XCTUnwrap(ModelCatalog.provider(id: "xai"))
+    let inventory = ModelInventory(providerID: "xai", modelIDs: ["grok-future-model"])
+
+    let choices = ModelCatalog.models(for: provider, inventory: inventory, retaining: "grok-future-model")
+
+    XCTAssertTrue(choices.contains(where: { $0.id == "grok-future-model" }))
+  }
+
+  func testOpenCodeModelDiscoveryParsesProviderScopedIDs() {
+    let output = "opencode-go/deepseek-v4-flash\nopencode-go/kimi-k2.7-code\nopencode/gpt-5.5"
+
+    XCTAssertEqual(
+      ModelInventoryService.modelIDs(fromOpenCodeOutput: output, providerID: "opencode-go"),
+      ["deepseek-v4-flash", "kimi-k2.7-code"]
+    )
+  }
+
+  @MainActor
+  func testProviderKeyReferencePropagatesToExistingRoute() {
+    let stateURL = FileManager.default.temporaryDirectory
+      .appendingPathComponent(UUID().uuidString)
+      .appendingPathComponent("state.json")
+    defer { try? FileManager.default.removeItem(at: stateURL.deletingLastPathComponent()) }
+    let store = JobmaxxingStore(stateURL: stateURL)
+    var route = store.state.modelRoutes.first(where: { $0.id == "standard-writing" })!
+    route.provider = "xAI"
+    route.model = "grok-4.5"
+    route.baseURL = "https://api.x.ai/v1"
+    route.keyReference = "XAI_API_KEY"
+    store.updateModelRoute(route)
+
+    store.updateConnectorConfig(connectorID: "xai", fieldID: "api-key-ref", value: "XAI_API_KEY")
+
+    XCTAssertEqual(
+      store.state.modelRoutes.first(where: { $0.id == "standard-writing" })?.keyReference,
+      "XAI_API_KEY"
+    )
   }
 
   func testConnectorAvailabilitySummaryUsesCurrentStateVocabulary() {
@@ -80,26 +133,6 @@ final class ConnectionSettingsDisplayTests: XCTestCase {
     XCTAssertNil(connectorSecondaryActionTitle(connector))
   }
 
-  func testForgetCredentialsOnlyAppearsForStoredSensitiveValues() {
-    let emptyKeyConnector = connector(
-      isEnabled: true,
-      isConnected: false,
-      fields: [
-        ConnectorConfigField(id: "api-key-ref", label: "Key ref", value: "", placeholder: "OPENAI_API_KEY", isSecret: false)
-      ]
-    )
-    let storedTokenConnector = connector(
-      isEnabled: true,
-      isConnected: false,
-      fields: [
-        ConnectorConfigField(id: "bot-token-ref", label: "Bot token ref", value: "TELEGRAM_BOT_TOKEN", placeholder: "", isSecret: true)
-      ]
-    )
-
-    XCTAssertFalse(connectorCanForgetCredentials(emptyKeyConnector))
-    XCTAssertTrue(connectorCanForgetCredentials(storedTokenConnector))
-  }
-
   func testDefaultConnectorsIncludeGrokAsModelProvider() {
     let connectors = JobmaxxingStore.defaultIntegrationConnectors
     let grok = connectors.first { $0.id == "xai" }
@@ -113,6 +146,108 @@ final class ConnectionSettingsDisplayTests: XCTestCase {
     XCTAssertEqual(provider?.name, "xAI")
     XCTAssertTrue(provider?.models.contains(where: { $0.id == "grok-4.5" }) == true)
     XCTAssertTrue(provider?.aliases.contains("grok") == true)
+  }
+
+  func testModelProviderKeyReferencesAreSensitiveFields() {
+    let providerIDs = ["openai", "xai", "opencode-go", "opencode-zen", "cursor"]
+    for providerID in providerIDs {
+      let connector = JobmaxxingStore.defaultIntegrationConnectors.first { $0.id == providerID }
+      let keyField = connector?.configFields?.first { $0.id == "api-key-ref" }
+      XCTAssertTrue(keyField?.isSecret == true, "\(providerID) must reject raw credentials")
+    }
+  }
+
+  @MainActor
+  func testRawModelProviderCredentialIsRejectedWithoutPersistence() {
+    let stateURL = FileManager.default.temporaryDirectory
+      .appendingPathComponent(UUID().uuidString)
+      .appendingPathComponent("state.json")
+    defer { try? FileManager.default.removeItem(at: stateURL.deletingLastPathComponent()) }
+    let store = JobmaxxingStore(stateURL: stateURL)
+
+    XCTAssertFalse(store.updateConnectorConfig(connectorID: "xai", fieldID: "api-key-ref", value: "raw-secret-value"))
+    XCTAssertFalse(store.updateConnectorConfig(
+      connectorID: "xai",
+      fieldID: "api-key-ref",
+      value: "not-a-credential-reference"
+    ))
+    let savedValue = store.integrationConnectors
+      .first(where: { $0.id == "xai" })?
+      .configFields?
+      .first(where: { $0.id == "api-key-ref" })?
+      .value
+    XCTAssertEqual(savedValue, "")
+    XCTAssertEqual(store.lastConnectorCheck(for: "xai")?.summary, "Use an environment variable reference")
+
+    var route = store.state.modelRoutes.first(where: { $0.id == "standard-writing" })!
+    route.provider = "xAI"
+    route.model = "grok-4.5"
+    route.baseURL = "https://api.x.ai/v1"
+    route.keyReference = "not-a-credential-reference"
+    XCTAssertFalse(store.updateModelRoute(route))
+  }
+
+  @MainActor
+  func testForgetCredentialsClearsConnectorRouteAndTelegramCopies() {
+    let stateURL = FileManager.default.temporaryDirectory
+      .appendingPathComponent(UUID().uuidString)
+      .appendingPathComponent("state.json")
+    defer { try? FileManager.default.removeItem(at: stateURL.deletingLastPathComponent()) }
+    let store = JobmaxxingStore(stateURL: stateURL)
+
+    var route = store.state.modelRoutes.first(where: { $0.id == "standard-writing" })!
+    route.provider = "xAI"
+    route.model = "grok-4.5"
+    route.baseURL = "https://api.x.ai/v1"
+    route.keyReference = "XAI_API_KEY"
+    XCTAssertTrue(store.updateModelRoute(route))
+    XCTAssertTrue(store.updateConnectorConfig(connectorID: "xai", fieldID: "api-key-ref", value: "XAI_API_KEY"))
+    XCTAssertTrue(store.hasSavedCredentialReference(for: "xai"))
+    store.disconnectConnector(id: "xai")
+    XCTAssertTrue(store.state.modelRoutes
+      .filter { ModelCatalog.provider(for: $0).id == "xai" }
+      .allSatisfy { $0.keyReference.isEmpty })
+    XCTAssertFalse(store.hasSavedCredentialReference(for: "xai"))
+
+    XCTAssertTrue(store.updateConnectorConfig(
+      connectorID: "telegram",
+      fieldID: "bot-token-ref",
+      value: "TELEGRAM_BOT_TOKEN"
+    ))
+    XCTAssertEqual(store.hermesChatState.settings.telegramBotTokenReference, "TELEGRAM_BOT_TOKEN")
+    XCTAssertTrue(store.hasSavedCredentialReference(for: "telegram"))
+    store.disconnectConnector(id: "telegram")
+    XCTAssertEqual(store.hermesChatState.settings.telegramBotTokenReference, "")
+    XCTAssertEqual(
+      store.integrationConnectors
+        .first(where: { $0.id == "telegram" })?
+        .configFields?
+        .first(where: { $0.id == "bot-token-ref" })?
+        .value,
+      ""
+    )
+    XCTAssertFalse(store.hasSavedCredentialReference(for: "telegram"))
+  }
+
+  @MainActor
+  func testLegacyTelegramSettingsCannotRepopulateRawCredential() {
+    let stateURL = FileManager.default.temporaryDirectory
+      .appendingPathComponent(UUID().uuidString)
+      .appendingPathComponent("state.json")
+    defer { try? FileManager.default.removeItem(at: stateURL.deletingLastPathComponent()) }
+    let store = JobmaxxingStore(stateURL: stateURL)
+    var settings = store.hermesChatState.settings
+    settings.telegramBotTokenReference = "not-a-credential-reference"
+
+    XCTAssertFalse(store.updateHermesChatSettings(settings))
+    XCTAssertNotEqual(
+      store.integrationConnectors
+        .first(where: { $0.id == "telegram" })?
+        .configFields?
+        .first(where: { $0.id == "bot-token-ref" })?
+        .value,
+      settings.telegramBotTokenReference
+    )
   }
 
   func testGrokProviderMatchesCommonRouteAliases() {

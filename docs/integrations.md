@@ -12,7 +12,7 @@ Recommended config:
     "jobmaxxing": {
       "command": "npm",
       "args": ["run", "mcp"],
-      "cwd": "~/Jobmaxxing"
+      "cwd": "<repository-root>"
     }
   }
 }
@@ -111,13 +111,13 @@ Jobmaxxing separates work by cost and risk:
 - standard writing: cover letters, outreach, screening answers
 - final review: final claim audit, important outreach, and interview narratives
 
-The app exposes three model tiers: Light, Medium, and High. Light defaults to OpenCode Go `deepseek-v4-flash`; Medium and High default to OpenAI routes and can use Grok when the xAI connector is ready. High is the intended Hermes review route for important hiring work when the connector is configured. Reasoning menus should only show choices returned by the active provider/model metadata. OpenAI is shown as tested only when `OPENAI_API_KEY` or its configured environment reference is available to the app process. Grok is shown as tested when `XAI_API_KEY`, Hermes xAI auth (`~/.hermes/auth.json`), or Grok Build login (`~/.grok/auth.json`) is available. Cursor is listed as a model provider only after Cursor Agent authentication returns account models. Configure provider keys through provider tooling, shell env, or keychain-backed tools. Do not commit secrets.
+The app exposes three model tiers: Light, Medium, and High. Light defaults to OpenCode Go `deepseek-v4-flash`; Medium and High default to OpenAI routes and can use Grok when the xAI connector is ready. High is the intended Hermes review route for important hiring work when the connector is configured. OpenAI and xAI refresh the models available to the authenticated account through `/v1/models`. OpenCode Go and OpenCode Zen are separate providers; configure either in OpenCode with `/connect`, then refresh its catalog in Settings > Models. The app stores model IDs and named environment-variable references, not API keys. Do not commit secrets.
 
 ## Connector Inventory
 
 The native Settings page separates providers from tools:
 
-- Model providers: OpenAI, Grok (xAI), OpenCode Go, Cursor. Provider selection is disabled until the connector is enabled and passes its readiness check.
+- Model providers: OpenAI, Grok (xAI), OpenCode Go, OpenCode Zen, Cursor. Provider selection is disabled until the connector is enabled and passes its readiness check.
 - Agent tools: local agent layer, Telegram, and WhatsApp.
 - Documents and mail: local documents and Apple Mail evidence.
 

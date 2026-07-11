@@ -4,7 +4,9 @@ struct InterviewsView: View {
   @EnvironmentObject private var store: JobmaxxingStore
   @State private var mode: InterviewMode = .text
   @State private var selectedSessionID: String?
-  @State private var notes = ""
+  @Binding var noteDrafts: [String: String]
+
+  private let compactBreakpoint: CGFloat = 760
 
   private var visibleSessions: [InterviewSession] {
     guard let jobID = store.selectedJob?.id else { return [] }
@@ -20,93 +22,106 @@ struct InterviewsView: View {
   }
 
   var body: some View {
-    HSplitView {
-      VStack(alignment: .leading, spacing: 14) {
-        if let job = store.selectedJob {
-          PlainHeader(title: job.role, detail: job.company)
+    GeometryReader { proxy in
+      let compact = proxy.size.width < compactBreakpoint
+      let layout = compact
+        ? AnyLayout(VStackLayout(alignment: .leading, spacing: 22))
+        : AnyLayout(HStackLayout(alignment: .top, spacing: 0))
+      ScrollView {
+        layout {
+          sidebarContent
+            .padding(compact ? 16 : 18)
+            .frame(maxWidth: compact ? .infinity : 420, alignment: .topLeading)
+          Divider()
+          detailContent
+            .padding(compact ? 16 : 22)
+            .frame(maxWidth: .infinity, alignment: .topLeading)
+        }
+        .frame(maxWidth: .infinity, alignment: .topLeading)
+      }
+    }
+    .onChange(of: store.selectedJobID) { _, _ in
+      selectedSessionID = nil
+    }
+  }
 
-          Picker("Mode", selection: $mode) {
-            ForEach(InterviewMode.allCases) { mode in
-              Text(mode.label).tag(mode)
-            }
-          }
-          .pickerStyle(.segmented)
+  private var sidebarContent: some View {
+    VStack(alignment: .leading, spacing: 14) {
+      if let job = store.selectedJob {
+        PlainHeader(title: job.role, detail: job.company)
 
-          Button {
-            store.createInterview(jobID: job.id, mode: mode)
-            selectedSessionID = visibleSessions.first?.id
-          } label: {
-            Label("Create practice", systemImage: "plus")
+        Picker("Mode", selection: $mode) {
+          ForEach(InterviewMode.allCases) { mode in
+            Text(mode.label).tag(mode)
           }
-          .buttonStyle(.borderedProminent)
+        }
+        .pickerStyle(.segmented)
+
+        Button {
+          store.createInterview(jobID: job.id, mode: mode)
+          selectedSessionID = visibleSessions.first?.id
+        } label: {
+          Label("Create practice", systemImage: "plus")
+        }
+        .buttonStyle(.borderedProminent)
+      } else {
+        InlineEmptyState(title: "No role selected", detail: "Select an application before creating practice.")
+      }
+
+      Divider()
+
+      VStack(alignment: .leading, spacing: 8) {
+        Text("Practice")
+          .font(.caption.weight(.bold))
+          .foregroundStyle(.secondary)
+
+        if visibleSessions.isEmpty {
+          InlineEmptyState(title: "No practice for this role", detail: "Create practice from the selected mode.")
         } else {
-          InlineEmptyState(title: "No role selected", detail: "Select an application before creating practice.")
+          PracticeSessionList(sessions: visibleSessions, selectedSessionID: $selectedSessionID)
+        }
+      }
+    }
+  }
+
+  @ViewBuilder
+  private var detailContent: some View {
+    if let session = selectedSession {
+      let notes = noteText(for: session)
+      VStack(alignment: .leading, spacing: 22) {
+        SessionSummary(title: sessionTitle(session), mode: session.mode.label)
+
+        Divider()
+
+        FlatSection(title: "Questions") {
+          InterviewQuestionList(questions: session.questions)
         }
 
         Divider()
 
-        VStack(alignment: .leading, spacing: 8) {
-          Text("Practice")
-            .font(.caption.weight(.bold))
-            .foregroundStyle(.secondary)
-
-          if visibleSessions.isEmpty {
-            InlineEmptyState(title: "No practice for this role", detail: "Create practice from the selected mode.")
-          } else {
-            PracticeSessionList(sessions: visibleSessions, selectedSessionID: $selectedSessionID)
-          }
+        FlatSection(title: "Scorecard") {
+          CompactList(items: session.scorecard)
         }
-      }
-      .padding(18)
-      .frame(minWidth: 320, idealWidth: 360, maxWidth: 420)
-      .frame(maxHeight: .infinity, alignment: .top)
 
-      ScrollView {
-        if let session = selectedSession {
-          VStack(alignment: .leading, spacing: 22) {
-            SessionSummary(title: sessionTitle(session), mode: session.mode.label)
+        Divider()
 
-            Divider()
-
-            FlatSection(title: "Questions") {
-              InterviewQuestionList(questions: session.questions)
-            }
-
-            Divider()
-
-            FlatSection(title: "Scorecard") {
-              CompactList(items: session.scorecard)
-            }
-
-            Divider()
-
-            InterviewNotesSection(
-              notes: $notes,
-              improveContext: [
-                "Session: \(sessionTitle(session))",
-                "Mode: \(session.mode.label)",
-                "Questions: \(session.questions.prefix(6).joined(separator: " | ").bounded(to: 700))",
-                "Scorecard: \(session.scorecard.prefix(6).joined(separator: " | ").bounded(to: 500))"
-              ].joined(separator: "\n"),
-              save: {
-                store.updateInterviewNotes(sessionID: session.id, notes: notes)
-              }
-            )
-            .onAppear { notes = session.notes }
-            .onChange(of: session.id) { _, _ in notes = session.notes }
+        InterviewNotesSection(
+          notes: noteBinding(for: session),
+          improveContext: [
+            "Session: \(sessionTitle(session))",
+            "Mode: \(session.mode.label)",
+            "Questions: \(session.questions.prefix(6).joined(separator: " | ").bounded(to: 700))",
+            "Scorecard: \(session.scorecard.prefix(6).joined(separator: " | ").bounded(to: 500))"
+          ].joined(separator: "\n"),
+          isSaveDisabled: notes == session.notes,
+          save: {
+            store.updateInterviewNotes(sessionID: session.id, notes: notes)
+            noteDrafts[session.id] = notes
           }
-          .padding(22)
-        } else {
-          InlineEmptyState(title: "No practice selected", detail: "Create practice for the selected role.")
-            .padding(22)
-        }
+        )
       }
-      .frame(minWidth: 620)
-      .frame(maxHeight: .infinity, alignment: .top)
-    }
-    .onChange(of: store.selectedJobID) { _, _ in
-      selectedSessionID = nil
-      notes = selectedSession?.notes ?? ""
+    } else {
+      InlineEmptyState(title: "No practice selected", detail: "Create practice for the selected role.")
     }
   }
 
@@ -115,6 +130,17 @@ struct InterviewsView: View {
       return "Interview practice"
     }
     return "\(job.company) - \(job.role)"
+  }
+
+  private func noteText(for session: InterviewSession) -> String {
+    noteDrafts[session.id] ?? session.notes
+  }
+
+  private func noteBinding(for session: InterviewSession) -> Binding<String> {
+    Binding(
+      get: { noteText(for: session) },
+      set: { noteDrafts[session.id] = $0 }
+    )
   }
 }
 
@@ -143,7 +169,10 @@ private struct PracticeSessionList: View {
               isSelected: currentSelectionID == session.id
             )
           }
-          .buttonStyle(.plain)
+          .buttonStyle(LiquidPressButtonStyle())
+          .accessibilityLabel("\(session.mode.label) practice, \(session.questions.count) questions")
+          .accessibilityValue(currentSelectionID == session.id ? "Selected" : "Not selected")
+          .accessibilityAddTraits(currentSelectionID == session.id ? .isSelected : [])
         }
       }
     }
@@ -183,7 +212,8 @@ private struct InterviewSessionRow: View {
     }
     .frame(maxWidth: .infinity, alignment: .leading)
     .padding(.horizontal, 10)
-    .padding(.vertical, 4)
+    .padding(.vertical, 6)
+    .frame(minHeight: 44)
     .background {
       if isSelected {
         RoundedRectangle(cornerRadius: 6)
@@ -221,7 +251,9 @@ private struct InterviewQuestionList: View {
 private struct InterviewNotesSection: View {
   @Binding var notes: String
   var improveContext: String = ""
+  let isSaveDisabled: Bool
   let save: () -> Void
+  @State private var saveStatus = ""
 
   var body: some View {
     VStack(alignment: .leading, spacing: 8) {
@@ -239,16 +271,29 @@ private struct InterviewNotesSection: View {
           onApply: { notes = $0 }
         )
 
-        Button("Save notes", action: save)
+        Button("Save notes") {
+          save()
+          saveStatus = "Notes saved."
+        }
           .controlSize(.small)
+          .disabled(isSaveDisabled)
       }
 
       TextEditor(text: $notes)
         .frame(height: 110)
         .scrollContentBackground(.hidden)
-        .padding(8)
-        .background(.background)
-        .overlay(RoundedRectangle(cornerRadius: 4).stroke(.separator))
+        .padding(10)
+        .liquidGlassSurface(.strong, cornerRadius: AppTheme.radiusSmall, isInteractive: true)
+        .accessibilityLabel("Interview notes")
+
+      if !saveStatus.isEmpty {
+        Text(saveStatus)
+          .font(.caption)
+          .foregroundStyle(.secondary)
+      }
+    }
+    .onChange(of: notes) { _, _ in
+      saveStatus = ""
     }
   }
 }

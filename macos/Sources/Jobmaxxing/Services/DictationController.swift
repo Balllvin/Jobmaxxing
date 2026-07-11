@@ -14,6 +14,8 @@ final class DictationController: NSObject, ObservableObject {
 
   private var recorder: AVAudioRecorder?
   private var recordingURL: URL?
+  private var transcriptionTask: Task<LocalScriptRunResult, Never>?
+  private var operationID: UUID?
 
   var isRecording: Bool {
     phase == .recording
@@ -37,9 +39,15 @@ final class DictationController: NSObject, ObservableObject {
   }
 
   func start() async -> String? {
-    phase = .idle
+    cancel()
+    let startID = UUID()
+    operationID = startID
     let hasAccess = await Self.requestMicrophoneAccess()
+    guard operationID == startID else {
+      return "Dictation cancelled."
+    }
     guard hasAccess else {
+      operationID = nil
       phase = .error("Microphone access is off.")
       return "Microphone access is off."
     }
@@ -64,6 +72,7 @@ final class DictationController: NSObject, ObservableObject {
     } catch {
       recorder = nil
       recordingURL = nil
+      operationID = nil
       let message = "Dictation could not start: \(error.localizedDescription)"
       phase = .error(message)
       return message
@@ -78,22 +87,50 @@ final class DictationController: NSObject, ObservableObject {
 
     recorder.stop()
     self.recorder = nil
-    self.recordingURL = nil
     phase = .transcribing
 
     let audioPath = recordingURL.path
-    let result = await Task.detached(priority: .userInitiated) {
-      defer {
-        try? FileManager.default.removeItem(atPath: audioPath)
-      }
-      return LocalScriptRunner.run(repoRelativePath: "scripts/transcribe_faster_whisper.sh", arguments: [audioPath], timeout: 180)
-    }.value
+    let currentOperationID = operationID
+    let task = Task {
+      await LocalScriptRunner.runAsync(
+        repoRelativePath: "scripts/transcribe_faster_whisper.sh",
+        arguments: [audioPath],
+        timeout: 180
+      )
+    }
+    transcriptionTask = task
+    let runResult = await task.value
+    try? FileManager.default.removeItem(atPath: audioPath)
+    guard operationID == currentOperationID else {
+      return "ERROR: Dictation cancelled."
+    }
+    transcriptionTask = nil
+    operationID = nil
+    self.recordingURL = nil
+    if runResult.wasCancelled {
+      phase = .idle
+      return "ERROR: Dictation cancelled."
+    }
+    let result = runResult.displayText
     if result.hasPrefix("ERROR:") {
       phase = .error(String(result.dropFirst("ERROR:".count)).trimmed)
     } else {
       phase = .idle
     }
     return result
+  }
+
+  func cancel() {
+    recorder?.stop()
+    recorder = nil
+    transcriptionTask?.cancel()
+    transcriptionTask = nil
+    if let recordingURL {
+      try? FileManager.default.removeItem(at: recordingURL)
+    }
+    recordingURL = nil
+    operationID = nil
+    phase = .idle
   }
 
   private static func requestMicrophoneAccess() async -> Bool {

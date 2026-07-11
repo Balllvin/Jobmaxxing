@@ -1,20 +1,17 @@
 {
   "name": "jobmaxxing",
-  "description": "Local-first job search operating system with agent tools, consent gates, and an application ledger.",
+  "description": "Local companion tools for the native Jobmaxxing macOS app.",
   "type": "module",
   "bin": {
     "jobmaxxing": "./src/cli.ts"
   },
   "scripts": {
-    "dev": "tsx src/dev.ts",
     "api": "tsx src/server.ts",
-    "web": "vite --host 127.0.0.1",
-    "build": "tsc --noEmit && vite build",
+    "build": "./script/build_and_run.sh --verify",
+    "clean:check": "scripts/check_clean_repo.sh",
     "typecheck:strict": "tsc --noEmit --noUnusedLocals --noUnusedParameters",
-    "preview": "tsx src/server.ts --static dist",
     "test": "vitest run",
     "lint": "eslint .",
-    "clean:check": "scripts/check_clean_repo.sh",
     "mcp": "tsx src/mcp.ts",
     "jm": "tsx src/cli.ts",
     "smoke": "tsx scripts/smoke.ts",
@@ -31,24 +28,15 @@
   "license": "MIT",
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",
-    "@phosphor-icons/react": "^2.1.10",
-    "react": "^19.2.7",
-    "react-dom": "^19.2.7",
     "zod": "^4.4.3"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
-    "@tailwindcss/vite": "^4.3.2",
     "@types/node": "^26.1.0",
-    "@types/react": "^19.2.17",
-    "@types/react-dom": "^19.2.3",
-    "@vitejs/plugin-react": "^6.0.3",
     "eslint": "^10.6.0",
-    "tailwindcss": "^4.3.2",
     "tsx": "^4.23.0",
     "typescript": "^6.0.3",
     "typescript-eslint": "^8.62.1",
-    "vite": "^8.1.3",
     "vitest": "^4.1.9"
   }
 }

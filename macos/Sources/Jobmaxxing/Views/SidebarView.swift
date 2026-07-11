@@ -3,214 +3,116 @@ import SwiftUI
 struct SidebarView: View {
   @EnvironmentObject private var store: JobmaxxingStore
   @Binding var selection: AppSection
-  @Binding var isCollapsed: Bool
+  @FocusState private var focusedSection: AppSection?
 
   var body: some View {
-    VStack(spacing: 0) {
-      SidebarHeader(isCollapsed: $isCollapsed)
-
-      ScrollView {
-        VStack(spacing: 4) {
-          ForEach(AppSection.primarySections) { section in
-            SidebarNavigationButton(
-              section: section,
-              isSelected: selection == section,
-              isCollapsed: isCollapsed
-            ) {
-              selection = section
-            }
+    ScrollView {
+      LazyVStack(spacing: 4) {
+        ForEach(AppSection.primarySections) { section in
+          Button {
+            selection = section
+          } label: {
+            Label(section.title, systemImage: section.systemImage)
+              .symbolRenderingMode(.monochrome)
+              .font(.system(size: 14, weight: selection == section ? .semibold : .medium))
+              .foregroundStyle(selection == section ? Color.primary : Color.secondary)
+              .padding(.horizontal, 10)
+              .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+              .contentShape(Rectangle())
+              .modifier(SelectedRowSurface(isSelected: selection == section, cornerRadius: AppTheme.radiusSmall))
           }
+          .buttonStyle(LiquidPressButtonStyle())
+          .focused($focusedSection, equals: section)
+          .help(section.title)
+          .accessibilityLabel(section.title)
+          .accessibilityValue(selection == section ? "Selected" : "")
+          .accessibilityAddTraits(selection == section ? .isSelected : [])
         }
-        .padding(.horizontal, 10)
-        .padding(.top, 14)
       }
-
+      .padding(.horizontal, 8)
+      .padding(.vertical, 8)
+    }
+    .scrollIndicators(.hidden)
+    .navigationTitle("Jobmaxxing")
+    .onMoveCommand { direction in
+      moveSelection(direction)
+    }
+    .safeAreaInset(edge: .bottom, spacing: 0) {
       SidebarSettingsFooter(
         selection: $selection,
-        isCollapsed: isCollapsed,
         displayName: SidebarDisplayName.userName(from: store.state.profile.name)
       )
     }
-    .background(AppTheme.canvas)
+  }
+
+  private func moveSelection(_ direction: MoveCommandDirection) {
+    guard let destination = SidebarKeyboardNavigation.destination(
+      from: focusedSection ?? selection,
+      moving: direction
+    ) else { return }
+    focusedSection = destination
+    selection = destination
+  }
+}
+
+enum SidebarKeyboardNavigation {
+  static func destination(from current: AppSection, moving direction: MoveCommandDirection) -> AppSection? {
+    guard let currentIndex = AppSection.primarySections.firstIndex(of: current) else { return nil }
+    switch direction {
+    case .up:
+      return AppSection.primarySections[max(AppSection.primarySections.startIndex, currentIndex - 1)]
+    case .down:
+      return AppSection.primarySections[
+        min(AppSection.primarySections.index(before: AppSection.primarySections.endIndex), currentIndex + 1)
+      ]
+    default:
+      return nil
+    }
   }
 }
 
 enum SidebarDisplayName {
   static func userName(from rawName: String) -> String {
     let name = rawName.trimmed
-    return name.isEmpty ? "Local Candidate" : name
-  }
-}
-
-private struct SidebarHeader: View {
-  @Binding var isCollapsed: Bool
-
-  var body: some View {
-    HStack(spacing: isCollapsed ? 0 : 8) {
-      if !isCollapsed {
-        Text("Jobmaxxing")
-          .font(.system(size: 17, weight: .semibold))
-          .lineLimit(1)
-          .truncationMode(.tail)
-          .layoutPriority(1)
-      }
-
-      Spacer(minLength: 0)
-
-      SidebarUtilityIconButton(
-        help: isCollapsed ? "Expand sidebar" : "Collapse sidebar",
-        action: {
-          isCollapsed.toggle()
-        }
-      ) {
-        SidebarCollapseGlyph(isCollapsed: isCollapsed)
-      }
-
-      if isCollapsed {
-        Spacer(minLength: 0)
-      }
-    }
-    .foregroundStyle(Color.primary)
-    .padding(.leading, isCollapsed ? 0 : 18)
-    .padding(.trailing, isCollapsed ? 0 : 10)
-    .frame(height: 48)
-    .overlay(alignment: .bottom) {
-      Divider()
-    }
-  }
-}
-
-private struct SidebarNavigationButton: View {
-  let section: AppSection
-  let isSelected: Bool
-  let isCollapsed: Bool
-  let action: () -> Void
-  @State private var isHovering = false
-
-  var body: some View {
-    HStack(spacing: 11) {
-      Image(systemName: section.systemImage)
-        .font(.system(size: 15, weight: .medium))
-        .frame(width: 20)
-      if !isCollapsed {
-        Text(section.title)
-          .font(.system(size: 15, weight: isSelected ? .semibold : .medium))
-          .lineLimit(1)
-        Spacer()
-      }
-    }
-    .foregroundStyle(isSelected ? Color.primary : Color.secondary)
-    .padding(.horizontal, 10)
-    .frame(height: 34)
-    .frame(maxWidth: .infinity, alignment: isCollapsed ? .center : .leading)
-    .background(isHovering && !isSelected ? AppTheme.hoverFill : Color.clear)
-    .modifier(SelectedRowSurface(isSelected: isSelected))
-    .contentShape(RoundedRectangle(cornerRadius: 6))
-    .onTapGesture(perform: action)
-    .onHover { isHovering = $0 }
-    .help(section.title)
-    .accessibilityAddTraits(.isButton)
-    .accessibilityLabel(section.title)
+    return name.isEmpty ? "Example User" : name
   }
 }
 
 private struct SidebarSettingsFooter: View {
   @Binding var selection: AppSection
-  let isCollapsed: Bool
   let displayName: String
 
   var body: some View {
-    HStack(spacing: isCollapsed ? 0 : 8) {
-      if isCollapsed {
-        Spacer(minLength: 0)
-      } else {
-        Text(displayName)
-          .font(.system(size: 15, weight: .medium))
-          .foregroundStyle(Color.secondary)
-          .lineLimit(1)
-          .truncationMode(.tail)
-          .layoutPriority(1)
-      }
-
-      if !isCollapsed {
-        Spacer(minLength: 0)
-      }
-
-      SidebarUtilityIconButton(
-        help: "Settings",
-        action: {
-          selection = .settings
-        }
-      ) {
-        Image(systemName: "gearshape")
-          .symbolRenderingMode(.monochrome)
-          .font(.system(size: 15, weight: .semibold))
-          .foregroundStyle(Color.secondary)
-      }
-
-      if isCollapsed {
-        Spacer(minLength: 0)
-      }
-    }
-    .padding(.leading, isCollapsed ? 0 : 18)
-    .padding(.trailing, isCollapsed ? 0 : 10)
-    .frame(height: 55)
-    .background(AppTheme.canvas)
-    .overlay(alignment: .top) {
+    VStack(spacing: 0) {
       Divider()
-    }
-  }
-}
 
-private struct SidebarUtilityIconButton<Icon: View>: View {
-  let help: String
-  let action: () -> Void
-  let icon: () -> Icon
-  @State private var isHovering = false
+      Button {
+        selection = .settings
+      } label: {
+        HStack(spacing: 10) {
+          Text(displayName)
+            .font(.system(size: 14, weight: .medium))
+            .foregroundStyle(.secondary)
+            .lineLimit(1)
+            .truncationMode(.tail)
 
-  init(help: String, action: @escaping () -> Void, @ViewBuilder icon: @escaping () -> Icon) {
-    self.help = help
-    self.action = action
-    self.icon = icon
-  }
+          Spacer(minLength: 8)
 
-  var body: some View {
-    icon()
-      .frame(width: 28, height: 28)
-      .background(isHovering ? AppTheme.hoverFill : Color.clear)
-      .clipShape(RoundedRectangle(cornerRadius: 6))
-      .contentShape(RoundedRectangle(cornerRadius: 6))
-      .onTapGesture(perform: action)
-    .onHover { isHovering = $0 }
-    .help(help)
-    .accessibilityAddTraits(.isButton)
-    .accessibilityLabel(help)
-  }
-}
-
-private struct SidebarCollapseGlyph: View {
-  let isCollapsed: Bool
-
-  var body: some View {
-    ZStack {
-      RoundedRectangle(cornerRadius: 3)
-        .stroke(Color.secondary, lineWidth: 1.5)
-        .frame(width: 18, height: 15)
-
-      HStack(spacing: 0) {
-        if isCollapsed {
-          Spacer(minLength: 0)
+          Image(systemName: "gearshape")
+            .symbolRenderingMode(.monochrome)
+            .font(.system(size: 15, weight: .semibold))
+            .foregroundStyle(.secondary)
+            .frame(width: 44, height: 44)
         }
-
-        Rectangle()
-          .fill(Color.secondary.opacity(0.85))
-          .frame(width: 4, height: 11)
-
-        if !isCollapsed {
-          Spacer(minLength: 0)
-        }
+        .padding(.leading, 12)
+        .padding(.trailing, 4)
+        .frame(maxWidth: .infinity, minHeight: 52, alignment: .leading)
+        .contentShape(Rectangle())
       }
-      .frame(width: 14, height: 11)
+      .buttonStyle(LiquidPressButtonStyle())
+      .help("Settings")
+      .accessibilityLabel("Settings for \(displayName)")
     }
+    .background(.bar)
   }
 }

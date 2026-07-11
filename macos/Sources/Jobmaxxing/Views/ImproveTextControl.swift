@@ -16,24 +16,50 @@ struct ImproveTextControl: View {
   @State private var status = ""
   @State private var isRewriting = false
   @State private var editorHeight: CGFloat = 72
+  @State private var latestSourceText = ""
+  @State private var sourceRevision = 0
+  @State private var rewriteTask: Task<Void, Never>?
 
   var body: some View {
-    Image(systemName: "bubble.left.and.bubble.right")
-      .font(.system(size: 11, weight: .semibold))
-      .foregroundStyle(.secondary)
-      .frame(width: 22, height: 22)
-      .contentShape(Rectangle())
-      .onTapGesture {
-        isOpen.toggle()
-      }
+    Button {
+      isOpen.toggle()
+    } label: {
+      Image(systemName: "bubble.left.and.bubble.right")
+        .font(.system(size: 12, weight: .semibold))
+        .foregroundStyle(.secondary)
+        .frame(width: 44, height: 44)
+        .contentShape(Rectangle())
+    }
+    .buttonStyle(LiquidPressButtonStyle())
     .help("Improve with feedback")
-    .accessibilityAddTraits(.isButton)
     .accessibilityLabel("Improve with feedback")
     .popover(isPresented: $isOpen, arrowEdge: .bottom) {
       popoverBody
         .frame(width: 300)
         .padding(.horizontal, 8)
         .padding(.vertical, 6)
+    }
+    .onAppear {
+      latestSourceText = currentText
+    }
+    .onChange(of: currentText) { _, nextText in
+      latestSourceText = nextText
+      sourceRevision += 1
+      if isRewriting {
+        cancelRewrite(status: "Source text changed. Review it before rewriting again.")
+      }
+    }
+    .onChange(of: isOpen) { _, open in
+      if !open {
+        if isRewriting {
+          cancelRewrite(status: "")
+        }
+        dictation.cancel()
+      }
+    }
+    .onDisappear {
+      cancelRewrite(status: "")
+      dictation.cancel()
     }
   }
 
@@ -53,20 +79,19 @@ struct ImproveTextControl: View {
         if isRewriting || dictation.isTranscribing {
           ProgressView()
             .controlSize(.small)
-            .frame(width: 28, height: 28)
+            .frame(width: 44, height: 44)
         }
 
         Button {
           toggleDictation()
         } label: {
-          Image(systemName: dictation.isRecording ? "stop.fill" : "mic.fill")
-            .font(.system(size: 12, weight: .semibold))
-            .foregroundStyle(dictation.isRecording ? Color.red : Color.secondary)
-            .frame(width: 28, height: 28)
-            .contentShape(Rectangle())
+            Image(systemName: dictation.isRecording ? "stop.fill" : "mic.fill")
+              .font(.system(size: 12, weight: .semibold))
+              .foregroundStyle(dictation.isRecording ? Color.red : Color.secondary)
+              .frame(width: 44, height: 44)
+              .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
-        .focusable(false)
+        .buttonStyle(LiquidPressButtonStyle())
         .disabled(dictation.isTranscribing || isRewriting)
         .help(dictation.isRecording ? "Stop and transcribe" : "Dictate feedback")
         .accessibilityLabel(dictation.isRecording ? "Stop recording" : "Record feedback")
@@ -74,14 +99,13 @@ struct ImproveTextControl: View {
         Button {
           applyRewrite()
         } label: {
-          Image(systemName: "arrow.up.circle.fill")
-            .font(.system(size: 18, weight: .semibold))
-            .foregroundStyle(canSend ? Color.accentColor : Color.secondary.opacity(0.45))
-            .frame(width: 28, height: 28)
-            .contentShape(Rectangle())
+            Image(systemName: "arrow.up.circle.fill")
+              .font(.system(size: 18, weight: .semibold))
+              .foregroundStyle(canSend ? Color.accentColor : Color.secondary.opacity(0.45))
+              .frame(width: 44, height: 44)
+              .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
-        .focusable(false)
+        .buttonStyle(LiquidPressButtonStyle())
         .disabled(!canSend)
         .help("Rewrite (⌘⏎)")
         .accessibilityLabel("Rewrite with feedback")
@@ -134,17 +158,30 @@ struct ImproveTextControl: View {
   private func applyRewrite() {
     let userFeedback = feedback.trimmed
     guard !userFeedback.isEmpty else { return }
+    let sourceText = latestSourceText.isEmpty ? currentText : latestSourceText
+    let revision = sourceRevision
+    rewriteTask?.cancel()
     isRewriting = true
     status = ""
-    Task {
+    rewriteTask = Task {
       let result = await store.rewriteTextWithFeedback(
-        currentText: currentText,
+        currentText: sourceText,
         feedback: userFeedback,
         context: context,
         kind: kind
       )
+      guard !Task.isCancelled else { return }
       await MainActor.run {
+        guard !Task.isCancelled,
+              sourceRevision == revision,
+              latestSourceText == sourceText else {
+          isRewriting = false
+          status = "Source text changed. The stale rewrite was not applied."
+          rewriteTask = nil
+          return
+        }
         isRewriting = false
+        rewriteTask = nil
         if result.hasPrefix("ERROR:") {
           status = String(result.dropFirst("ERROR:".count)).trimmed
           return
@@ -160,6 +197,13 @@ struct ImproveTextControl: View {
         isOpen = false
       }
     }
+  }
+
+  private func cancelRewrite(status nextStatus: String) {
+    rewriteTask?.cancel()
+    rewriteTask = nil
+    isRewriting = false
+    status = nextStatus
   }
 }
 

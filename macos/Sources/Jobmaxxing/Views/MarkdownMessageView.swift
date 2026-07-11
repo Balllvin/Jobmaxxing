@@ -3,7 +3,14 @@ import SwiftUI
 
 struct MarkdownMessageView: View {
   let text: String
-  var alignment: HorizontalAlignment = .leading
+  let alignment: HorizontalAlignment
+  @State private var blocks: [MarkdownMessageBlock]
+
+  init(text: String, alignment: HorizontalAlignment = .leading) {
+    self.text = text
+    self.alignment = alignment
+    _blocks = State(initialValue: HermesMarkdownParser.blocks(in: text))
+  }
 
   private var nsTextAlignment: NSTextAlignment {
     alignment == .trailing ? .right : .left
@@ -11,11 +18,14 @@ struct MarkdownMessageView: View {
 
   var body: some View {
     VStack(alignment: alignment, spacing: 7) {
-      ForEach(HermesMarkdownParser.blocks(in: text)) { block in
+      ForEach(blocks) { block in
         blockView(block)
       }
     }
     .fixedSize(horizontal: false, vertical: true)
+    .onChange(of: text) { _, nextText in
+      blocks = HermesMarkdownParser.blocks(in: nextText)
+    }
   }
 
   @ViewBuilder
@@ -183,10 +193,7 @@ private struct SelectableTextView: NSViewRepresentable {
     }
     textView.alignment = alignment
     textView.textContainer?.containerSize = NSSize(width: max(textView.bounds.width, 1), height: CGFloat.greatestFiniteMagnitude)
-    context.coordinator.updateHeight(for: textView)
-    DispatchQueue.main.async {
-      context.coordinator.updateHeight(for: textView)
-    }
+    context.coordinator.scheduleHeightUpdate(for: textView)
   }
 
   func makeCoordinator() -> Coordinator {
@@ -200,6 +207,7 @@ private struct SelectableTextView: NSViewRepresentable {
 
   final class Coordinator: NSObject, NSTextViewDelegate {
     @Binding var height: CGFloat
+    private var heightUpdateScheduled = false
 
     init(height: Binding<CGFloat>) {
       _height = height
@@ -207,19 +215,28 @@ private struct SelectableTextView: NSViewRepresentable {
 
     func textDidChange(_ notification: Notification) {
       guard let textView = notification.object as? NSTextView else { return }
-      updateHeight(for: textView)
+      scheduleHeightUpdate(for: textView)
     }
 
-    func updateHeight(for textView: NSTextView) {
+    func scheduleHeightUpdate(for textView: NSTextView) {
+      guard !heightUpdateScheduled else { return }
+      heightUpdateScheduled = true
+      DispatchQueue.main.async { [weak self, weak textView] in
+        guard let self else { return }
+        self.heightUpdateScheduled = false
+        guard let textView else { return }
+        self.updateHeight(for: textView)
+      }
+    }
+
+    private func updateHeight(for textView: NSTextView) {
       guard let layoutManager = textView.layoutManager,
             let textContainer = textView.textContainer else { return }
       layoutManager.ensureLayout(for: textContainer)
       let usedRect = layoutManager.usedRect(for: textContainer)
       let nextHeight = max(1, ceil(usedRect.height + textView.textContainerInset.height * 2))
       guard abs(height - nextHeight) > 0.5 else { return }
-      DispatchQueue.main.async {
-        self.height = nextHeight
-      }
+      height = nextHeight
     }
   }
 }
