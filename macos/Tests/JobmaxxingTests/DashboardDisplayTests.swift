@@ -18,10 +18,10 @@ final class DashboardDisplayTests: XCTestCase {
   }
 
   func testCompanyRowsUseShortResearchStatus() {
-    let researched = company(name: "ExampleCo", researchStatus: "Researched from official and public sources")
+    let researched = company(name: "Example Company", researchStatus: "Researched from official and public sources")
     let missing = company(name: "Example Company", researchStatus: "Not researched")
 
-    XCTAssertEqual(dashboardCompanyTitle(researched), "ExampleCo")
+    XCTAssertEqual(dashboardCompanyTitle(researched), "Example Company")
     XCTAssertEqual(dashboardCompanyResearchStatus(researched), "Research ready")
     XCTAssertEqual(dashboardCompanyActionTitle(researched), "Map proof")
     XCTAssertEqual(dashboardCompanyResearchStatus(missing), "Research needed")
@@ -49,9 +49,9 @@ final class DashboardDisplayTests: XCTestCase {
       id: "event-interview",
       sequence: 2,
       actor: "Jobmaxxing",
-      jobID: "job-exampleco",
+      jobID: "job-example-company",
       title: "Prepared interview",
-      detail: "Text interview questions and scorecard for ExampleCo.",
+      detail: "Text interview questions and scorecard for Example Company.",
       approval: "not needed"
     )
 

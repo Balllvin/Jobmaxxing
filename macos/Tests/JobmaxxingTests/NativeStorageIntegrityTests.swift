@@ -214,7 +214,7 @@ final class NativeStorageIntegrityTests: XCTestCase {
         name: "Example Contact",
         role: "Supply Chain internship contact",
         jobDescription: "",
-        linkedInURL: "https://example.com/profiles/example-contact",
+        linkedInURL: "https://ch.linkedin.com/in/example-contact-60b513129",
         phone: "",
         email: "",
         location: "",
@@ -226,9 +226,9 @@ final class NativeStorageIntegrityTests: XCTestCase {
         projectNotes: "",
         companyLinks: [
           ContactCompanyLink(
-            id: "example-contact-exampleco",
-            companyID: "exampleco",
-            companyName: "ExampleCo",
+            id: "example-contact-company",
+            companyID: "example-company",
+            companyName: "Example Company",
             role: "Supply Chain internship contact",
             relationship: "Hiring contact",
             notes: "",

@@ -41,7 +41,7 @@ enum HermesHighAgentRunner {
 
   private static func sessionPrompt(for request: HermesHighAgentRequest) -> String {
     var promptParts = [
-      "Reply to User in Markdown from the live Hermes session.",
+      "Reply to the user in Markdown from the live Hermes session.",
       "Use the installed Jobmaxxing layer, MCP tools, saved evidence, and safety policy.",
       "Do not expose CLI progress as the final answer.",
       "User message: \(oneLine(request.visibleUserText))",

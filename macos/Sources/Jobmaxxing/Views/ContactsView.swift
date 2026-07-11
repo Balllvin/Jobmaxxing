@@ -226,7 +226,7 @@ struct ContactsView: View {
         selectedCompanyID = initialCompanyID
       }
     } else if selectedCompanyID.isEmpty {
-      selectedCompanyID = store.companyProfiles.first(where: { $0.id == "exampleco" })?.id ?? store.companyProfiles.first?.id ?? ""
+      selectedCompanyID = store.companyProfiles.first(where: { $0.id == "example-company" })?.id ?? store.companyProfiles.first?.id ?? ""
     }
     selectedContactID = ""
   }
@@ -1195,29 +1195,29 @@ struct ContactSourceLabel: Hashable {
     if host.contains("workdayjobs.com") {
       return "Workday careers"
     }
-    if host.contains("exampleco.com") {
+    if host.contains("example-company.com") {
       if path.hasSuffix(".pdf") {
-        return "ExampleCo PDF"
+        return "Example Company PDF"
       }
-      if path.contains("working-at-exampleco") {
-        return "ExampleCo careers"
+      if path.contains("working-at-example-company") {
+        return "Example Company careers"
       }
-      if path.contains("exampleco-news") {
-        return "ExampleCo news"
+      if path.contains("example-company-news") {
+        return "Example Company news"
       }
       if path.contains("leadership") {
-        return "ExampleCo leadership"
+        return "Example Company leadership"
       }
       if path.contains("history") {
-        return "ExampleCo history"
+        return "Example Company history"
       }
       if path.contains("corporate-social") || path.contains("responsibilities") {
-        return "ExampleCo CSR"
+        return "Example Company CSR"
       }
       if path.contains("products") || path.contains("solutions") {
-        return "ExampleCo products"
+        return "Example Company products"
       }
-      return "ExampleCo"
+      return "Example Company"
     }
     return host
   }
@@ -1417,7 +1417,7 @@ private struct WhatsAppMessageRow: View {
   }
 
   private var sender: some View {
-    Text(message.isFromMe ? "User" : contactName)
+    Text(message.isFromMe ? "the user" : contactName)
       .font(.caption.weight(.semibold))
       .foregroundStyle(.secondary)
       .lineLimit(1)
@@ -1444,7 +1444,7 @@ private struct ContactCompanyPicker: View {
     }
     .onAppear {
       if selectedCompanyID.isEmpty {
-        selectedCompanyID = store.companyProfiles.first(where: { $0.id == "exampleco" })?.id ?? store.companyProfiles.first?.id ?? ""
+        selectedCompanyID = store.companyProfiles.first(where: { $0.id == "example-company" })?.id ?? store.companyProfiles.first?.id ?? ""
       }
     }
   }

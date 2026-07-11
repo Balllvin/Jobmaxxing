@@ -21,7 +21,7 @@ final class BrowserSafetyPolicyTests: XCTestCase {
   func testEveryBrowserModeMakesFinalSubmitOwnershipExplicit() {
     for mode in PermissionMode.allCases {
       let rule = browserSafetyRule(for: mode)
-      XCTAssertTrue(rule.contains("User"), "Missing human owner for \(mode.rawValue)")
+      XCTAssertTrue(rule.contains("the user"), "Missing human owner for \(mode.rawValue)")
       XCTAssertTrue(
         rule.localizedCaseInsensitiveContains("submit") || rule.localizedCaseInsensitiveContains("final control"),
         "Missing final-submit gate for \(mode.rawValue)"

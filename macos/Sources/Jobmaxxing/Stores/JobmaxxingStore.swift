@@ -1654,9 +1654,9 @@ final class JobmaxxingStore: ObservableObject {
     }.joined(separator: "\n")
     let savedContactsText = contacts.prefix(16).map(Self.hermesContactContextLine).joined(separator: "\n")
     return [
-      "Output: answer User in Markdown. Use headings, bullets, code fences, and tables when they make the response easier to scan.",
+      "Output: answer the user in Markdown. Use headings, bullets, code fences, and tables when they make the response easier to scan.",
       "State rule: before creating a company or contact, match saved records by company, person name, role, LinkedIn/source URL, phone/email, or WhatsApp JID. Update matching records instead of creating duplicates.",
-      "Research rule: if User asks about a public company fact, tool, person, system name, or unresolved clue, search or prepare browser steps before marking it unknown. Keep facts sourced, label assumptions, and do not leave a public unknown unresolved when lookup tools are available.",
+      "Research rule: if the user asks about a public company fact, tool, person, system name, or unresolved clue, search or prepare browser steps before marking it unknown. Keep facts sourced, label assumptions, and do not leave a public unknown unresolved when lookup tools are available.",
       goalText,
       selectedCompanyText,
       "Selected company contacts:",
@@ -3082,18 +3082,9 @@ final class JobmaxxingStore: ObservableObject {
 
   private func applyProfileDefaults() -> Bool {
     var changed = false
-    if state.profile.experience == nil {
-      state.profile.experience = Self.defaultProfileExperience
-      changed = true
-    }
-    if state.profile.profileProjects == nil {
-      state.profile.profileProjects = Self.defaultProfileProjects
-      changed = true
-    }
-    if state.profile.personalMemory == nil {
-      state.profile.personalMemory = Self.defaultProfileMemory
-      changed = true
-    }
+    if state.profile.experience == nil { state.profile.experience = Self.defaultProfileExperience; changed = true }
+    if state.profile.profileProjects == nil { state.profile.profileProjects = Self.defaultProfileProjects; changed = true }
+    if state.profile.personalMemory == nil { state.profile.personalMemory = Self.defaultProfileMemory; changed = true }
     return changed
   }
 
@@ -3428,7 +3419,7 @@ final class JobmaxxingStore: ObservableObject {
       "Would you be open to pointing me toward the right person or sharing what I should understand first?",
       "",
       "Best,",
-      "User"
+      "the user"
     ].joined(separator: "\n")
     return next
   }
@@ -3447,7 +3438,7 @@ final class JobmaxxingStore: ObservableObject {
         "Yes, 18:00-18:30 works for me. Please call me when you are ready.",
         "",
         "Kind regards,",
-        "User"
+        "the user"
       ].joined(separator: "\n")
     }
     if lower.contains("today") && lower.contains("tomorrow") && (lower.contains("call") || lower.contains("available")) {
@@ -3462,7 +3453,7 @@ final class JobmaxxingStore: ObservableObject {
         "I am free for the rest of today, so please let me know what time works best for you. I am also free tomorrow if that would suit you better.",
         "",
         "Kind regards,",
-        "User"
+        "the user"
       ].joined(separator: "\n")
     }
     if lower.contains("call") || lower.contains("available") {
@@ -3474,7 +3465,7 @@ final class JobmaxxingStore: ObservableObject {
         "I am free for the rest of the day, so please let me know what time works best for you. I am also free tomorrow if that would fit better.",
         "",
         "Kind regards,",
-        "User"
+        "the user"
       ].joined(separator: "\n")
     }
     return nil
@@ -3911,7 +3902,7 @@ final class JobmaxxingStore: ObservableObject {
       "I would be happy to send over any additional information that would be useful. Please let me know if there is anything specific you would like from me before the next step.",
       "",
       "Kind regards,",
-      "User"
+      "the user"
     ].joined(separator: "\n")
   }
 
@@ -5169,7 +5160,6 @@ extension JobmaxxingStore {
     )
     return (profiles, true)
   }
-
 
   static let defaultCompetitorApps: [CompetitorApp] = [
     CompetitorApp(

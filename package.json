@@ -8,14 +8,14 @@
   "scripts": {
     "api": "tsx src/server.ts",
     "build": "./script/build_and_run.sh --verify",
-    "clean:check": "scripts/check_clean_repo.sh",
     "typecheck:strict": "tsc --noEmit --noUnusedLocals --noUnusedParameters",
     "test": "vitest run",
     "lint": "eslint .",
     "mcp": "tsx src/mcp.ts",
     "jm": "tsx src/cli.ts",
     "smoke": "tsx scripts/smoke.ts",
-    "native:test": "scripts/test_native.sh"
+    "native:test": "scripts/test_native.sh",
+    "clean:check": "scripts/check_clean_repo.sh"
   },
   "keywords": [
     "jobs",
