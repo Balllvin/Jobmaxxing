@@ -2840,21 +2840,11 @@ final class JobmaxxingStore: ObservableObject {
   }
 
   private static func normalizedContactName(_ contact: ContactRecord) -> String {
-    let name = normalizedUserFacingText(contact.name)
-    let context = ([contact.linkedInURL, contact.sourceURL, contact.research.summary] + contact.research.publicFacts + contact.research.sourceURLs)
-      .joined(separator: " ")
-      .lowercased()
-    if name == "Example Contact", context.contains("example-contact") || context.contains("example-contact dehin") {
-      return "Example Contact"
-    }
-    return name
+    normalizedUserFacingText(contact.name)
   }
 
   private static func normalizedSourceReference(_ value: String) -> String {
-    value.replacingOccurrences(
-      of: "Apple Mail contract evidence: Example User Vertrag.pdf",
-      with: "Apple Mail contract evidence: Example User contract.pdf (original German filename: Example User Vertrag.pdf)"
-    )
+    normalizedUserFacingText(value)
   }
 
   private static func normalizedDraftBodyText(_ value: String) -> String {
@@ -2862,28 +2852,25 @@ final class JobmaxxingStore: ObservableObject {
   }
 
   private static func isSourceLanguageArtifact(_ value: String) -> Bool {
-    value.range(of: #"\b(Sehr geehrte|Ich bewerbe mich|Finanzthemen|Schweizerdeutsch|Warum VZ)\b"#, options: [.regularExpression, .caseInsensitive]) != nil
+    value.range(of: #"\b(Sehr geehrte|Ich bewerbe mich|Finanzthemen|Schweizerdeutsch|Warum Example)\b"#, options: [.regularExpression, .caseInsensitive]) != nil
   }
 
   static func normalizedUserFacingText(_ value: String) -> String {
-    let protectedWerkstudent = "__SOURCE_WERKSTUDENT__"
+    let protectedSourceRole = "__SOURCE_WORKING_STUDENT__"
     var next = value
       .replacingOccurrences(of: "&amp;", with: "&")
       .replacingOccurrences(of: #"\bAIML\s*-\s*"#, with: "", options: .regularExpression)
       .replacingOccurrences(of: #"\bAIML\b"#, with: "AI and ML", options: .regularExpression)
       .replacingOccurrences(of: #"\bAI/ML\b"#, with: "AI and ML", options: .regularExpression)
       .replacingOccurrences(of: #"\bData\s*/\s*ML\s*/\s*AI Intern\b"#, with: "Data, ML, and AI Intern", options: .regularExpression)
+      .replacingOccurrences(of: #"\bData\s*/\s*ML\s*/\s*AI\b"#, with: "Data, ML, and AI", options: .regularExpression)
       .replacingOccurrences(of: #"\bIntern Applied AI\s*&\s*AI-Platform\b"#, with: "Applied AI and AI Platform Intern", options: .regularExpression)
       .replacingOccurrences(of: #"\bApplied AI\s*&\s*AI-Platform Intern\b"#, with: "Applied AI and AI Platform Intern", options: .regularExpression)
-      .replacingOccurrences(of: "Finance trifft auf Engineering: Trainee-Programm beim VZ, 80-100%", with: "Finance and Engineering Trainee Program at VZ, 80-100%")
-      .replacingOccurrences(of: "Contracted as Werkstudent", with: "Contracted as a working student (source role title: \(protectedWerkstudent))")
-      .replacingOccurrences(of: #"\bWerkstudent\b"#, with: "Working Student", options: .regularExpression)
-      .replacingOccurrences(of: "source role title: Working Student", with: "source role title: \(protectedWerkstudent)")
-      .replacingOccurrences(of: protectedWerkstudent, with: "Werkstudent")
-      .replacingOccurrences(
-        of: "Apple Mail contract evidence: Example User Vertrag.pdf",
-        with: "Apple Mail contract evidence: Example User contract.pdf (original German filename: Example User Vertrag.pdf)"
-      )
+      .replacingOccurrences(of: "Daten trifft auf Systeme: Trainee-Programm, 80-100%", with: "Data and Systems Trainee Program, 80-100%")
+      .replacingOccurrences(of: "Contracted as working student", with: "Contracted as a working student (source role title: \(protectedSourceRole))")
+      .replacingOccurrences(of: "source role title: Working Student", with: "source role title: \(protectedSourceRole)")
+      .replacingOccurrences(of: protectedSourceRole, with: "working student")
+      .replacingOccurrences(of: "Apple Mail contract evidence: Local Candidate Vertrag.pdf", with: "Apple Mail contract evidence: Local Candidate contract.pdf (original German filename: Local Candidate Vertrag.pdf)")
     next = next.replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression)
     return next.trimmed
   }
@@ -3095,24 +3082,8 @@ final class JobmaxxingStore: ObservableObject {
 
   private func applyProfileDefaults() -> Bool {
     var changed = false
-    if state.profile.name.trimmed == "User" {
-      state.profile.name = "Example User"
-      changed = true
-    }
-    if (state.profile.headline ?? "").trimmed.isEmpty {
-      state.profile.headline = "AI product engineer building agentic tools, finance research systems, and local-first automation."
-      changed = true
-    }
-    if (state.profile.about ?? "").trimmed.isEmpty {
-      state.profile.about = "Builds proof-backed AI workflows: agent control planes, finance research systems, safe browser workflows, local-first macOS apps, and review loops that make generated work inspectable."
-      changed = true
-    }
     if state.profile.experience == nil {
       state.profile.experience = Self.defaultProfileExperience
-      changed = true
-    }
-    if state.profile.skills == nil {
-      state.profile.skills = Self.defaultProfileSkills
       changed = true
     }
     if state.profile.profileProjects == nil {
@@ -3121,14 +3092,6 @@ final class JobmaxxingStore: ObservableObject {
     }
     if state.profile.personalMemory == nil {
       state.profile.personalMemory = Self.defaultProfileMemory
-      changed = true
-    }
-    if state.profile.certifications == nil {
-      state.profile.certifications = []
-      changed = true
-    }
-    if state.profile.education == nil {
-      state.profile.education = []
       changed = true
     }
     return changed
@@ -3958,8 +3921,8 @@ final class JobmaxxingStore: ObservableObject {
       return "No linked WhatsApp conversation is saved."
     }
     var points: [String] = []
-    if firstIncoming.localizedCaseInsensitiveContains("Adil Kourbal") {
-      points.append("The saved thread mentions Adil Kourbal.")
+    if firstIncoming.localizedCaseInsensitiveContains("Example Contact") {
+      points.append("The saved thread mentions Example Contact.")
     }
     if firstIncoming.localizedCaseInsensitiveContains("Supply Chain") && firstIncoming.localizedCaseInsensitiveContains("intern") {
       points.append("The saved thread mentions a supply-chain internship.")
@@ -5070,269 +5033,15 @@ extension JobmaxxingStore {
     )
   ]
 
-  static let defaultProfileSkills = [
-    "Agent workflows",
-    "SwiftUI macOS apps",
-    "Browser automation handoffs",
-    "MCP tooling",
-    "Prompt engineering",
-    "Finance research systems",
-    "Provider routing",
-    "Backend services",
-    "Frontend product surfaces",
-    "Review loops",
-    "Telegram integrations",
-    "Local-first tools"
-  ]
+  static let defaultProfileSkills: [String] = []
 
-  static let defaultProfileExperience: [ProfileExperience] = [
-    ProfileExperience(
-      id: "profile-exp-marauder",
-      title: "Built Marauder finance workspace",
-      organization: "Project",
-      location: "Remote",
-      period: "Recent work",
-      summary: "Built a multi-surface finance research system with desktop terminal, PWA, Smaug control plane, notebook, QuantLab, backend, shared contracts, and provider routing.",
-      bullets: [
-        "Connected research, notebooks, provider routing, and deployment into one workspace.",
-        "Shipped usable surfaces instead of isolated demos.",
-        "Kept claims backed by live project links."
-      ],
-      sourceURL: "https://marauder-main.up.railway.app",
-      projects: [
-        ProfileExperienceProject(
-          id: "profile-exp-marauder-core",
-          name: "Finance research workspace",
-          summary: "Multi-surface finance research product with provider routing.",
-          detail: "Connected research, notebooks, provider routing, and deployment into one workspace so claims stay backed by live surfaces instead of isolated demos.",
-          specificSample: "One path runs a research question through provider-routed tools, notebook notes, and a reviewable output surface without losing source context.",
-          tools: ["TypeScript", "provider routing", "notebooks"],
-          metrics: [],
-          tags: ["finance", "research", "product"],
-          sourceURL: "https://marauder-main.up.railway.app"
-        )
-      ]
-    ),
-    ProfileExperience(
-      id: "profile-exp-smaug",
-      title: "Built Smaug agent control plane",
-      organization: "Project",
-      location: "Remote",
-      period: "Recent work",
-      summary: "Built an assistant and operations control plane with harnesses, memory links, tools, workflow runs, Telegram integration, and runner visibility.",
-      bullets: [
-        "Designed the control plane around inspectable agent runs.",
-        "Linked memory, tools, Telegram intake, and workflow status.",
-        "Focused on operational visibility rather than black-box automation."
-      ],
-      sourceURL: "https://smaug.up.railway.app",
-      projects: [
-        ProfileExperienceProject(
-          id: "profile-exp-smaug-core",
-          name: "Agent control plane",
-          summary: "Inspectable agent runs with memory, tools, and Telegram intake.",
-          detail: "Designed the control plane around inspectable agent runs and linked memory, tools, Telegram intake, and workflow status.",
-          specificSample: "A task enters through Telegram or the UI, routes through tools with memory links, and only proceeds after review-visible state is recorded.",
-          tools: ["agents", "Telegram", "workflow runner"],
-          metrics: [],
-          tags: ["agents", "automation", "ops"],
-          sourceURL: "https://smaug.up.railway.app"
-        )
-      ]
-    ),
-    ProfileExperience(
-      id: "profile-exp-jobmaxxing",
-      title: "Built Jobmaxxing",
-      organization: "Open-source project",
-      location: "Local macOS",
-      period: "Current work",
-      summary: "Built a local-first job-search operating system with MCP tools, browser safety gates, writing memory, and native macOS workspace.",
-      bullets: [
-        "Created a native workspace for applications, documents, writing, interviews, safe browser planning, and agent routing.",
-        "Added proof-linked writing rules to avoid generic AI application text.",
-        "Layered Codex and Hermes-style orchestration into a local app workflow."
-      ],
-      sourceURL: "https://github.com/Balllvin/Jobmaxxing",
-      projects: [
-        ProfileExperienceProject(
-          id: "profile-exp-jobmaxxing-core",
-          name: "Evidence-backed hiring workspace",
-          summary: "Native job-search workspace with writing audits and browser safety gates.",
-          detail: "Built a local-first job-search OS with applications, company research, experience writeups, writing audits, and approval gates before external actions.",
-          specificSample: "A draft application pack pulls broad experience themes plus one project sample, then fails audit if claims lack saved proof.",
-          tools: ["SwiftUI", "MCP", "Hermes"],
-          metrics: [],
-          tags: ["macos", "job search", "writing"],
-          sourceURL: "https://github.com/Balllvin/Jobmaxxing"
-        )
-      ]
-    )
-  ]
+  static let defaultProfileExperience: [ProfileExperience] = []
 
-  static let defaultProfileProjects: [ProfileProject] = [
-    ProfileProject(
-      id: "profile-project-marauder",
-      name: "Marauder",
-      url: "https://marauder-main.up.railway.app",
-      summary: "Finance research workspace with multi-surface product architecture and provider routing.",
-      tags: ["finance", "research", "product", "agents"]
-    ),
-    ProfileProject(
-      id: "profile-project-quant-lab",
-      name: "Quant Lab",
-      url: "https://quant-lab-production.up.railway.app",
-      summary: "Strategy testing surface with baselines, notes, and proof-first interpretation.",
-      tags: ["finance", "data", "testing"]
-    ),
-    ProfileProject(
-      id: "profile-project-smaug",
-      name: "Smaug",
-      url: "https://smaug.up.railway.app",
-      summary: "Agent control plane with workflow visibility, tools, memory links, and Telegram intake.",
-      tags: ["agents", "automation", "workflow"]
-    ),
-    ProfileProject(
-      id: "profile-project-jobmaxxing",
-      name: "Jobmaxxing",
-      url: "https://github.com/Balllvin/Jobmaxxing",
-      summary: "Native macOS job-search workspace with Codex/Hermes tooling, evidence memory, and browser safety gates.",
-      tags: ["macos", "swift", "job search", "mcp"]
-    )
-  ]
+  static let defaultProfileProjects: [ProfileProject] = []
 
-  static let defaultProfileMemory: [ProfileMemory] = [
-    ProfileMemory(
-      id: "profile-memory-direct-writing",
-      kind: "Writing",
-      title: "Direct proof-first writing",
-      detail: "Recruiter and application text should name what was built, include one useful link, and avoid hype.",
-      source: "User preference",
-      strength: 5
-    ),
-    ProfileMemory(
-      id: "profile-memory-anti-slop",
-      kind: "Writing",
-      title: "No generic excitement language",
-      detail: "Avoid phrases like excited, innovative, passionate, dynamic, and cutting-edge unless the sentence also contains concrete evidence.",
-      source: "Prompt memory",
-      strength: 5
-    ),
-    ProfileMemory(
-      id: "profile-memory-agentic-products",
-      kind: "Positioning",
-      title: "Strongest positioning",
-      detail: "Best-fit roles involve agent platforms, automation, browser workflows, applied AI tools, finance research systems, or founder-style product engineering.",
-      source: "Evidence library",
-      strength: 4
-    )
-  ]
+  static let defaultProfileMemory: [ProfileMemory] = []
 
-  static let defaultCompanyProfiles: [CompanyProfile] = [
-    CompanyProfile(
-      id: "marauder",
-      name: "Marauder",
-      website: "https://marauder-main.up.railway.app",
-      linkedInURL: "",
-      category: "User proof",
-      size: "Project",
-      headquarters: "Local-first",
-      publicStatus: "Private project",
-      summary: "Finance research workspace with desktop terminal, PWA, Smaug control plane, notebook, QuantLab, backend, shared contracts, and provider routing.",
-      relationship: "Built by user",
-      applicationIDs: [],
-      experienceIDs: ["profile-exp-marauder"],
-      submittedMaterials: [],
-      people: [],
-      research: companyResearch(
-        status: "Known from user evidence",
-        confidence: 72,
-        website: "https://marauder-main.up.railway.app",
-        products: ["Finance research workspace", "Provider-routed research surfaces"],
-        businessModel: "User-built proof project, not an employer.",
-        hiringSignals: ["finance", "research", "product", "backend", "frontend", "agents"]
-      ),
-      nextActions: ["Use as proof for finance, agent, research, backend, frontend, and product roles.", "Keep links attached when used in contact messages."],
-      notes: ""
-    ),
-    CompanyProfile(
-      id: "smaug",
-      name: "Smaug",
-      website: "https://smaug.up.railway.app",
-      linkedInURL: "",
-      category: "User proof",
-      size: "Project",
-      headquarters: "Local-first",
-      publicStatus: "Private project",
-      summary: "Assistant and operations control plane with harnesses, memory links, tools, workflow runs, Telegram integration, and runner visibility.",
-      relationship: "Built by user",
-      applicationIDs: [],
-      experienceIDs: ["profile-exp-smaug"],
-      submittedMaterials: [],
-      people: [],
-      research: companyResearch(
-        status: "Known from user evidence",
-        confidence: 72,
-        website: "https://smaug.up.railway.app",
-        products: ["Agent control plane", "Workflow runner visibility", "Telegram intent intake"],
-        businessModel: "User-built proof project, not an employer.",
-        hiringSignals: ["agents", "automation", "workflow", "telegram", "tools"]
-      ),
-      nextActions: ["Use as proof for agent platform and operations automation roles.", "Attach the link when writing about workflow visibility."],
-      notes: ""
-    ),
-    CompanyProfile(
-      id: "quant-lab",
-      name: "Quant Lab",
-      website: "https://quant-lab-production.up.railway.app",
-      linkedInURL: "",
-      category: "User proof",
-      size: "Project",
-      headquarters: "Local-first",
-      publicStatus: "Private project",
-      summary: "Strategy testing surface that turns a rule into a backend-backed result with baselines, notes, and proof-first interpretation.",
-      relationship: "Built by user",
-      applicationIDs: [],
-      experienceIDs: [],
-      submittedMaterials: [],
-      people: [],
-      research: companyResearch(
-        status: "Known from user evidence",
-        confidence: 68,
-        website: "https://quant-lab-production.up.railway.app",
-        products: ["Strategy testing", "Baseline comparison", "Proof-first interpretation"],
-        businessModel: "User-built proof project, not an employer.",
-        hiringSignals: ["finance", "data", "research", "testing"]
-      ),
-      nextActions: ["Use as proof for finance, data, and research tooling roles.", "Attach only when the target role values testable systems."],
-      notes: ""
-    ),
-    CompanyProfile(
-      id: "jobmaxxing",
-      name: "Jobmaxxing",
-      website: "https://github.com/Balllvin/Jobmaxxing",
-      linkedInURL: "",
-      category: "User proof",
-      size: "Open-source project",
-      headquarters: "Local macOS",
-      publicStatus: "Open-source",
-      summary: "Native macOS job-search workspace with Codex/Hermes tooling, evidence memory, company profiles, browser safety gates, and local state.",
-      relationship: "Built by user",
-      applicationIDs: [],
-      experienceIDs: ["profile-exp-jobmaxxing"],
-      submittedMaterials: [],
-      people: [],
-      research: companyResearch(
-        status: "Known from repository",
-        confidence: 70,
-        website: "https://github.com/Balllvin/Jobmaxxing",
-        products: ["Native job-search workspace", "Company profiles", "MCP tools", "Browser safety plans"],
-        businessModel: "Open-source local-first tool.",
-        hiringSignals: ["agents", "macos", "swift", "mcp", "job search"]
-      ),
-      nextActions: ["Use as proof for native macOS, local-first agents, and hiring workflow roles.", "Link to the repository when the role values inspectable code."],
-      notes: ""
-    )
-  ]
+  static let defaultCompanyProfiles: [CompanyProfile] = []
 
   static func companyID(for name: String) -> String {
     let scalars = name.lowercased().unicodeScalars.map { scalar -> Character in
@@ -5460,6 +5169,7 @@ extension JobmaxxingStore {
     )
     return (profiles, true)
   }
+
 
   static let defaultCompetitorApps: [CompetitorApp] = [
     CompetitorApp(
@@ -5861,60 +5571,22 @@ extension JobmaxxingStore {
 
   static let defaultState = JobmaxxingState(
     profile: CandidateProfile(
-      name: "Example User",
-      headline: "AI product engineer building agentic tools, finance research systems, and local-first automation.",
+      name: "Candidate",
+      headline: "",
       linkedInURL: "",
-      about: "Builds proof-backed AI workflows: agent control planes, finance research systems, safe browser workflows, local-first macOS apps, and review loops that make generated work inspectable.",
-      targetRoles: ["AI product engineer", "founding engineer", "automation engineer"],
-      locations: ["Remote", "Zurich", "London", "New York"],
-      workAuthorization: "Confirm per role before applying.",
-      compensationGoal: "High-upside role with strong base, equity, or clear contracting budget.",
-      writingPreferences: [
-        "Write directly and with proof.",
-        "Use Amazon-style short sentences.",
-        "Remove hype unless it is backed by a link.",
-        "Name the shipped thing, not just the skill."
-      ],
-      evidence: [
-        EvidenceItem(
-          id: "evidence-marauder",
-          title: "Built Marauder finance workspace",
-          proof: "Built a multi-surface finance research system with desktop terminal, PWA, Smaug control plane, notebook, QuantLab, backend, shared contracts, and provider routing.",
-          sourceURL: "https://marauder-main.up.railway.app",
-          tags: ["finance", "research", "product", "backend", "frontend", "agents"],
-          strength: 5
-        ),
-        EvidenceItem(
-          id: "evidence-quantlab",
-          title: "Built Quant Lab",
-          proof: "Built a strategy testing surface that turns a rule into a backend-backed result with baselines, notes, and proof-first interpretation.",
-          sourceURL: "https://quant-lab-production.up.railway.app",
-          tags: ["finance", "data", "research", "testing"],
-          strength: 5
-        ),
-        EvidenceItem(
-          id: "evidence-smaug",
-          title: "Built Smaug agent control plane",
-          proof: "Built an assistant and operations control plane with harnesses, memory links, tools, workflow runs, Telegram integration, and runner visibility.",
-          sourceURL: "https://smaug.up.railway.app",
-          tags: ["agents", "automation", "workflow", "telegram", "tools"],
-          strength: 5
-        ),
-        EvidenceItem(
-          id: "evidence-jobmaxxing",
-          title: "Built Jobmaxxing",
-          proof: "Built this local-first job-search operating system with MCP tools, browser safety gates, writing memory, and native macOS workspace.",
-          sourceURL: "https://github.com/Balllvin/Jobmaxxing",
-          tags: ["agents", "macos", "swift", "mcp", "job search"],
-          strength: 4
-        )
-      ],
-      experience: defaultProfileExperience,
+      about: "",
+      targetRoles: [],
+      locations: [],
+      workAuthorization: "",
+      compensationGoal: "",
+      writingPreferences: [],
+      evidence: [],
+      experience: [],
       education: [],
-      skills: defaultProfileSkills,
+      skills: [],
       certifications: [],
-      profileProjects: defaultProfileProjects,
-      personalMemory: defaultProfileMemory,
+      profileProjects: [],
+      personalMemory: [],
       linkedInImportPlan: nil
     ),
     jobs: [],

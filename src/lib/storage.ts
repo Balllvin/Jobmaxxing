@@ -527,7 +527,7 @@ function normalizeDraftBodyText(value: string): string {
 }
 
 function isSourceLanguageArtifact(value: string): boolean {
-  return /\b(Sehr geehrte|Ich bewerbe mich|Finanzthemen|Schweizerdeutsch|Warum VZ)\b/i.test(value);
+  return /\b(Sehr geehrte|Ich bewerbe mich|Finanzthemen|Schweizerdeutsch|Warum Example)\b/i.test(value);
 }
 
 function normalizeProfileForDisplay(profile: UserProfile): UserProfile {
@@ -566,28 +566,41 @@ function normalizeProfileForDisplay(profile: UserProfile): UserProfile {
 }
 
 function normalizeCompanyForDisplay(company: CompanyProfile): CompanyProfile {
+  const research = company.research ?? {
+    status: "Not researched",
+    confidence: 0,
+    websitePages: [],
+    products: [],
+    businessModel: "",
+    leadership: [],
+    hiringSignals: [],
+    risks: [],
+    openQuestions: [],
+    sourceUrls: [],
+    agentPlan: []
+  };
   return {
     ...company,
     summary: normalizeUserFacingText(company.summary),
-    submittedMaterials: company.submittedMaterials.map((material) => ({
+    submittedMaterials: (company.submittedMaterials ?? []).map((material) => ({
       ...material,
       title: normalizeUserFacingText(material.title),
       summary: normalizeUserFacingText(material.summary)
     })),
-    people: company.people.map((person) => ({
+    people: (company.people ?? []).map((person) => ({
       ...person,
       name: normalizeUserFacingText(person.name),
       title: normalizeUserFacingText(person.title),
       notes: normalizeUserFacingText(person.notes)
     })),
     research: {
-      ...company.research,
-      websitePages: company.research.websitePages.map((page) => ({
+      ...research,
+      websitePages: research.websitePages.map((page) => ({
         ...page,
         title: normalizeUserFacingText(page.title),
         summary: normalizeUserFacingText(page.summary)
       })),
-      hiringSignals: company.research.hiringSignals.map(normalizeUserFacingText)
+      hiringSignals: research.hiringSignals.map(normalizeUserFacingText)
     }
   };
 }
@@ -616,14 +629,7 @@ function normalizeContactForDisplay(contact: ContactRecord): ContactRecord {
 }
 
 function normalizedContactName(contact: ContactRecord): string {
-  const name = normalizeUserFacingText(contact.name);
-  const context = [contact.linkedInUrl, contact.sourceUrl, contact.research.summary, ...contact.research.publicFacts, ...contact.research.sourceUrls]
-    .join(" ")
-    .toLowerCase();
-  if (name === "Example Contact" && (context.includes("example-contact") || context.includes("example-contact dehin"))) {
-    return "Example Contact";
-  }
-  return name;
+  return normalizeUserFacingText(contact.name);
 }
 
 function safeStoredExternalUrl(value: string): string {

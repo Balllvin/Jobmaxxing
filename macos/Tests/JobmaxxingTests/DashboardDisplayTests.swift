@@ -19,7 +19,7 @@ final class DashboardDisplayTests: XCTestCase {
 
   func testCompanyRowsUseShortResearchStatus() {
     let researched = company(name: "ExampleCo", researchStatus: "Researched from official and public sources")
-    let missing = company(name: "Dialectic", researchStatus: "Not researched")
+    let missing = company(name: "Example Company", researchStatus: "Not researched")
 
     XCTAssertEqual(dashboardCompanyTitle(researched), "ExampleCo")
     XCTAssertEqual(dashboardCompanyResearchStatus(researched), "Research ready")

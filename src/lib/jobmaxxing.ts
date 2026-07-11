@@ -433,7 +433,7 @@ export function formatExperienceForPrompt(profile: UserProfile): string {
 }
 
 export function normalizeUserFacingText(value: string): string {
-  return value
+  return (value ?? "")
     .replaceAll("&amp;", "&")
     .replace(/\bAIML\s*-\s*/g, "")
     .replace(/\bAIML\b/g, "AI and ML")
@@ -441,11 +441,11 @@ export function normalizeUserFacingText(value: string): string {
     .replace(/\bData\s*\/\s*ML\s*\/\s*AI Intern\b/g, "Data, ML, and AI Intern")
     .replace(/\bIntern Applied AI\s*&\s*AI-Platform\b/g, "Applied AI and AI Platform Intern")
     .replace(/\bApplied AI\s*&\s*AI-Platform Intern\b/g, "Applied AI and AI Platform Intern")
-    .replace(/Finance trifft auf Engineering: Trainee-Programm beim VZ, 80-100%/g, "Finance and Engineering Trainee Program at VZ, 80-100%")
-    .replace(/\bContracted as Werkstudent\b/g, "Contracted as a working student (source role title: __SOURCE_WERKSTUDENT__)")
-    .replace(/\bWerkstudent\b/g, "Working Student")
-    .replace(/\bsource role title: Working Student\b/g, "source role title: __SOURCE_WERKSTUDENT__")
-    .replaceAll("__SOURCE_WERKSTUDENT__", "Werkstudent")
+    .replace(/Daten trifft auf Systeme: Trainee-Programm, 80-100%/g, "Data and Systems Trainee Program, 80-100%")
+    .replace(/\bContracted as working student\b/g, "Contracted as a working student (source role title: __SOURCE_ROLE__)")
+    .replace(/\bworking student\b/g, "Working Student")
+    .replace(/\bsource role title: Working Student\b/g, "source role title: __SOURCE_ROLE__")
+    .replaceAll("__SOURCE_ROLE__", "working student")
     .replace(
       /\bApple Mail contract evidence: Example User Vertrag\.pdf\b/g,
       "Apple Mail contract evidence: Example User contract.pdf (original German filename: Example User Vertrag.pdf)"
@@ -584,7 +584,7 @@ export function buildWritingPrompt(profile: UserProfile, draft = ""): string {
     "5. No company lecture, no posting paraphrase, no service pitch.",
     "",
     "Good example shape:",
-    "- I am interested in the Data, ML, and AI Intern role at Dialectic.",
+    "- I am interested in the Data, ML, and AI Intern role at Northstar Climate Bank.",
     "- Most of my recent work sits where market research meets software. That means cleaning messy information, building small tools that speed up analysis, and keeping the results clear enough that another person can check them.",
     "- For example, last summer during an investment internship, a lot of time went into the same news-and-notes grind: open several sources, copy pieces into a document, and try to compare what mattered. I built a process that pulled those inputs together, cleaned them, and turned them into a short structured summary someone could review before a research discussion. The point was not to replace judgment. The point was to stop redoing the same setup work every morning.",
     "- My CV is attached. I would look forward to hearing back from you and learning more about the role.",

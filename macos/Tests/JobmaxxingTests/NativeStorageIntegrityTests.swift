@@ -113,21 +113,21 @@ final class NativeStorageIntegrityTests: XCTestCase {
     state.profile.evidence = [
       EvidenceItem(
         id: "fact-contract",
-        title: "OPEKTUM / PEKTOPROP data tooling contract",
-        proof: "Contracted as Werkstudent at PEKTOPROP AG / OPEKTUM AG to support reporting.",
+        title: "Example Ops / Example Data data tooling contract",
+        proof: "Contracted as working student at Example Data AG / Example Ops AG to support reporting.",
         sourceURL: "Apple Mail contract evidence: Example User Vertrag.pdf",
-        tags: ["Werkstudent"],
+        tags: ["working student"],
         strength: 5
       )
     ]
     state.profile.experience = [
       ProfileExperience(
         id: "exp-contract",
-        title: "Werkstudent",
-        organization: "PEKTOPROP AG / OPEKTUM AG",
+        title: "working student",
+        organization: "Example Data AG / Example Ops AG",
         location: "Zurich",
         period: "Contract",
-        summary: "Contracted as Werkstudent at PEKTOPROP AG / OPEKTUM AG.",
+        summary: "Contracted as working student at Example Data AG / Example Ops AG.",
         bullets: ["Supported reporting."],
         sourceURL: "Apple Mail contract evidence: Example User Vertrag.pdf"
       )
@@ -135,7 +135,7 @@ final class NativeStorageIntegrityTests: XCTestCase {
     state.jobs = [
       JobRecord(
         id: "job-drift",
-        company: "V-ZUG",
+        company: "Example Manufacturing",
         role: "Intern Applied AI &amp; AI-Platform",
         sourceURL: "https://example.com",
         description: "Work on AIML and RAG.",
@@ -143,14 +143,14 @@ final class NativeStorageIntegrityTests: XCTestCase {
         score: 91,
         keywords: ["AIML", "Data / ML / AI Intern"],
         risks: [],
-        nextActions: ["Review Finance trifft auf Engineering: Trainee-Programm beim VZ, 80-100%"],
-        notes: "Source title: Finance trifft auf Engineering: Trainee-Programm beim VZ, 80-100%",
+        nextActions: ["Review Daten trifft auf Systeme: Trainee-Programm, 80-100%"],
+        notes: "Source title: Daten trifft auf Systeme: Trainee-Programm, 80-100%",
         draft: ApplicationDraft(
           headline: "Intern Applied AI &amp; AI-Platform candidate",
           resumeBullets: ["Evidence for Data / ML / AI Intern."],
-          coverLetter: "Sehr geehrte Frau Malcolm,\n\nIch bewerbe mich für das Trainee-Programm Finance trifft auf Engineering.",
+          coverLetter: "Sehr geehrte Frau Example,\n\nIch bewerbe mich für das Trainee-Programm Finance trifft auf Engineering.",
           recruiterMessage: "Hi, I found the Data / ML / AI Intern role.",
-          screeningAnswers: ["Warum VZ?: Finance trifft auf Engineering."],
+          screeningAnswers: ["Warum Example?: Finance trifft auf Engineering."],
           evidenceLinks: ["Apple Mail contract evidence: Example User Vertrag.pdf"],
           claimTrace: nil,
           assumptions: ["Role priorities include AIML."],
@@ -160,8 +160,8 @@ final class NativeStorageIntegrityTests: XCTestCase {
     ]
     state.companyProfiles = [
       CompanyProfile(
-        id: "v-zug",
-        name: "V-ZUG",
+        id: "example-manufacturing",
+        name: "Example Manufacturing",
         website: "https://example.com",
         linkedInURL: "",
         category: "Applied AI",
@@ -177,7 +177,7 @@ final class NativeStorageIntegrityTests: XCTestCase {
             id: "submission-drift",
             jobID: "job-drift",
             materialType: "Application draft",
-            title: "Finance trifft auf Engineering: Trainee-Programm beim VZ, 80-100% application pack",
+            title: "Daten trifft auf Systeme: Trainee-Programm, 80-100% application pack",
             summary: "Drafted for Intern Applied AI &amp; AI-Platform.",
             sourceURL: "https://example.com",
             status: "Proposed"
@@ -190,9 +190,9 @@ final class NativeStorageIntegrityTests: XCTestCase {
           websitePages: [
             CompanyResearchPage(
               id: "page-drift",
-              title: "V-ZUG Intern Applied AI &amp; AI-Platform",
+              title: "Example Manufacturing Intern Applied AI &amp; AI-Platform",
               url: "https://example.com",
-              summary: "Source page for Finance trifft auf Engineering: Trainee-Programm beim VZ, 80-100%."
+              summary: "Source page for Daten trifft auf Systeme: Trainee-Programm, 80-100%."
             )
           ],
           products: [],
@@ -255,12 +255,12 @@ final class NativeStorageIntegrityTests: XCTestCase {
     XCTAssertEqual(store.state.jobs[0].role, "Applied AI and AI Platform Intern")
     XCTAssertEqual(store.state.jobs[0].keywords, ["AI and ML", "Data, ML, and AI Intern"])
     XCTAssertEqual(store.state.jobs[0].draft?.headline, "Applied AI and AI Platform Intern candidate")
-    XCTAssertTrue(store.state.jobs[0].draft?.coverLetter.contains("Sehr geehrte Frau Malcolm") == true)
+    XCTAssertTrue(store.state.jobs[0].draft?.coverLetter.contains("Sehr geehrte Frau Example") == true)
     XCTAssertEqual(store.state.contacts?.first?.name, "Example Contact")
     XCTAssertEqual(store.state.profile.experience?.first?.title, "Working Student")
-    XCTAssertTrue(store.state.profile.evidence[0].proof.contains("source role title: Werkstudent"))
+    XCTAssertTrue(store.state.profile.evidence[0].proof.contains("source role title: working student"))
     XCTAssertTrue(store.state.profile.evidence[0].sourceURL.contains("original German filename: Example User Vertrag.pdf"))
-    XCTAssertTrue(store.state.companyProfiles?.first?.submittedMaterials.first?.title.contains("Finance and Engineering Trainee Program at VZ, 80-100%") == true)
+    XCTAssertTrue(store.state.companyProfiles?.first?.submittedMaterials.first?.title.contains("Data and Systems Trainee Program, 80-100%") == true)
     XCTAssertEqual(afterSecondLoad, afterFirstLoad)
   }
 
