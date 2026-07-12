@@ -2,6 +2,7 @@ import Foundation
 
 enum AppSection: String, CaseIterable, Identifiable, Codable {
   case dashboard
+  case profile
   case chat
   case applications
   case companies
@@ -15,6 +16,7 @@ enum AppSection: String, CaseIterable, Identifiable, Codable {
 
   static let primarySections: [AppSection] = [
     .dashboard,
+    .profile,
     .chat,
     .applications,
     .companies,
@@ -27,6 +29,7 @@ enum AppSection: String, CaseIterable, Identifiable, Codable {
   var title: String {
     switch self {
     case .dashboard: "Dashboard"
+    case .profile: "Profile"
     case .chat: "Chat"
     case .applications: "Applications"
     case .companies: "Companies"
@@ -41,6 +44,7 @@ enum AppSection: String, CaseIterable, Identifiable, Codable {
   var systemImage: String {
     switch self {
     case .dashboard: "rectangle.grid.2x2"
+    case .profile: "person.text.rectangle"
     case .chat: "message"
     case .applications: "briefcase"
     case .companies: "building.2"

@@ -16,6 +16,7 @@ The app uses a native sidebar split view. Do not put every workflow on one page.
 ## Current Sidebar
 
 - Dashboard: queue summary, next actions, and recent activity.
+- Profile: the user's own professional story, experience, selected work, outcomes, education, direction, and sources. Each saved block has a focused pencil popover, while Edit profile opens the same fields as one complete editor.
 - Chat: Hermes-backed command workspace, dictation, attachments, Telegram sync, trace rows, and slash-command suggestions.
 - Applications: role intake, pipeline, selected-role dossier, proof-linked draft pack, and document attachment.
 - Companies: company profiles, application history, submitted material, contacts, source maps, and explicit local research plans.
@@ -23,7 +24,7 @@ The app uses a native sidebar split view. Do not put every workflow on one page.
 - Writing: anti-slop audit, prompt memory, and evidence-backed draft checks.
 - Interviews: text/call/onsite/panel practice sessions and follow-up prep.
 - Browser: consent-first protected-site handoff plans.
-- Settings: setup, code help, account/profile, model providers, agent tools, documents/mail connectors, Hermes layer controls, and browser permissions.
+- Settings: setup, code help, model providers, agent tools, documents/mail connectors, Hermes layer controls, and browser permissions.
 
 Intelligence and command routing still exist through shared domain logic, MCP tools, and chat suggestions. They are not separate native sidebar pages.
 

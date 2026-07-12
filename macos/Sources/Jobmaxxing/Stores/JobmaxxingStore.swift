@@ -254,26 +254,6 @@ final class JobmaxxingStore: ObservableObject {
     state.integrationConnectors ?? Self.defaultIntegrationConnectors
   }
 
-  var profileExperience: [ProfileExperience] {
-    state.profile.experience ?? Self.defaultProfileExperience
-  }
-
-  var profileEducation: [ProfileEducation] {
-    state.profile.education ?? []
-  }
-
-  var profileSkills: [String] {
-    state.profile.skills ?? Self.defaultProfileSkills
-  }
-
-  var profileProjects: [ProfileProject] {
-    state.profile.profileProjects ?? Self.defaultProfileProjects
-  }
-
-  var profileMemory: [ProfileMemory] {
-    state.profile.personalMemory ?? Self.defaultProfileMemory
-  }
-
   var competitorApps: [CompetitorApp] {
     state.competitorApps ?? Self.defaultCompetitorApps
   }
@@ -373,17 +353,22 @@ final class JobmaxxingStore: ObservableObject {
       return "ERROR: Add feedback first."
     }
 
+    let isProfileStory = ProfileStorySupport.isStoryKind(kind)
+    let requestContext = isProfileStory
+      ? ProfileStorySupport.storyFactsContext(for: state.profile)
+      : hermesHighAgentContext()
     let prompt = TextImproveSupport.rewritePrompt(
       currentText: currentText,
       feedback: userFeedback,
-      context: [context.trimmed, hermesHighAgentContext()].filter { !$0.isEmpty }.joined(separator: "\n\n"),
+      context: isProfileStory ? "" : context.trimmed,
       kind: kind
     )
     let request = hermesHighAgentRequest(
       rawText: prompt,
       visibleText: "Rewrite \(kind.trimmed.isEmpty ? "text" : kind) from user feedback",
       commandID: nil,
-      attachments: []
+      attachments: [],
+      contextOverride: requestContext
     )
     let result = await HermesHighAgentRunner.respond(to: request)
     if result.traces.contains(where: { $0.status.trimmed.lowercased() == "failed" }) {
@@ -1600,7 +1585,8 @@ final class JobmaxxingStore: ObservableObject {
     rawText: String,
     visibleText: String,
     commandID: String?,
-    attachments: [CandidateDocument]
+    attachments: [CandidateDocument],
+    contextOverride: String? = nil
   ) -> HermesHighAgentRequest {
     let route = state.modelRoutes.first(where: { $0.id == hermesSettings.defaultModelRouteID })
       ?? state.modelRoutes.first(where: { $0.id == "final-review" })
@@ -1610,7 +1596,7 @@ final class JobmaxxingStore: ObservableObject {
       visibleUserText: visibleText,
       commandID: commandID,
       route: route,
-      context: hermesHighAgentContext(),
+      context: contextOverride ?? hermesHighAgentContext(),
       attachmentTitles: attachments.map(\.title),
       updateCommand: hermesSettings.updateCommand
     )
@@ -1653,8 +1639,9 @@ final class JobmaxxingStore: ObservableObject {
       ].compactMap { $0 }.joined(separator: " | ")
     }.joined(separator: "\n")
     let savedContactsText = contacts.prefix(16).map(Self.hermesContactContextLine).joined(separator: "\n")
+    let profileText = ProfileStorySupport.context(for: state.profile)
     return [
-      "Output: answer the user in Markdown. Use headings, bullets, code fences, and tables when they make the response easier to scan.",
+      "Output: answer the current user in the format requested. Use Markdown only when it makes that requested output easier to scan.",
       "State rule: before creating a company or contact, match saved records by company, person name, role, LinkedIn/source URL, phone/email, or WhatsApp JID. Update matching records instead of creating duplicates.",
       "Research rule: if the user asks about a public company fact, tool, person, system name, or unresolved clue, search or prepare browser steps before marking it unknown. Keep facts sourced, label assumptions, and do not leave a public unknown unresolved when lookup tools are available.",
       goalText,
@@ -1662,9 +1649,7 @@ final class JobmaxxingStore: ObservableObject {
       "Selected company contacts:",
       selectedCompanyContacts.isEmpty ? "None saved for the selected company." : selectedCompanyContacts,
       selectedJobText,
-      "Candidate: \(state.profile.name)",
-      "Target roles: \(state.profile.targetRoles.compactJoined)",
-      "Locations: \(state.profile.locations.compactJoined)",
+      "Saved profile:\n\(profileText)",
       "Saved companies:",
       savedCompaniesText.isEmpty ? "None saved." : savedCompaniesText,
       "Saved contacts:",
@@ -1768,9 +1753,20 @@ final class JobmaxxingStore: ObservableObject {
     }
   }
 
-  func updateProfile(_ profile: CandidateProfile) {
-    state.profile = profile
+  @discardableResult
+  func updateProfile(_ profile: CandidateProfile) -> Bool {
+    let previousProfile = state.profile
+    var nextProfile = profile
+    if previousProfile.linkedInURL?.trimmed != nextProfile.linkedInURL?.trimmed {
+      nextProfile.linkedInImportPlan = nil
+    }
+    state.profile = nextProfile
     persist()
+    guard storageAlert == nil else {
+      state.profile = previousProfile
+      return false
+    }
+    return true
   }
 
   func addCompany(name: String, website: String, linkedInURL: String, category: String, relationship: String, notes: String) {
@@ -2298,11 +2294,16 @@ final class JobmaxxingStore: ObservableObject {
       nextContacts[contactIndex] = Self.contactByApplyingWhatsAppProfile(
         nextContacts[contactIndex],
         profile: profile,
-        candidate: candidate,
-        company: company
+        candidate: candidate
       )
       let person = legacyPerson(from: nextContacts[contactIndex])
-      profile = Self.profileByAddingDrafts(profile, company: company, person: person, purpose: "Ask for useful hiring context or a warm introduction.")
+      profile = Self.profileByAddingDrafts(
+        profile,
+        company: company,
+        person: person,
+        purpose: "Ask for useful hiring context or a warm introduction.",
+        senderName: state.profile.name
+      )
       nextContacts[contactIndex] = Self.contactByLinking(
         nextContacts[contactIndex],
         to: company,
@@ -2384,7 +2385,13 @@ final class JobmaxxingStore: ObservableObject {
     }
     var nextContacts = contacts
     let person = legacyPerson(from: nextContacts[contactIndex])
-    whatsApp = Self.profileByAddingDrafts(whatsApp, company: company, person: person, purpose: purpose)
+    whatsApp = Self.profileByAddingDrafts(
+      whatsApp,
+      company: company,
+      person: person,
+      purpose: purpose,
+      senderName: state.profile.name
+    )
     var communication = nextContacts[contactIndex].communicationProfile ?? PersonCommunicationProfile()
     communication.whatsApp = whatsApp
     communication.appWideRules = Self.whatsAppAppWideRules
@@ -2424,13 +2431,13 @@ final class JobmaxxingStore: ObservableObject {
     profile.linkedInImportPlan = ProfileImportPlan(
       sourceURL: trimmedURL.isEmpty ? (profile.linkedInURL ?? "") : trimmedURL,
       status: "Ready for browser steps",
-      checkpoint: "Open LinkedIn only with the user visible, read profile details, then save structured fields back into Profile.",
+      checkpoint: "Open LinkedIn with you present, review the visible details, then let you choose what to add to Profile.",
       steps: [
-        "Open the LinkedIn profile with the user logged in.",
-        "Read headline, about, experience, education, skills, certifications, projects, and contact-safe public links.",
+        "Open your LinkedIn profile while you are signed in and can see it.",
+        "Review the headline, about section, experience, education, skills, certifications, projects, and public links.",
         "Do not click apply, message, edit profile, endorse, or export private data.",
-        "Convert visible profile facts into structured profile memory and evidence candidates.",
-        "Ask for approval before replacing existing profile fields."
+        "Prepare the visible details for your review.",
+        "Let you approve anything before it is added or replaced in Profile."
       ],
       fields: [
         "Headline",
@@ -2461,7 +2468,7 @@ final class JobmaxxingStore: ObservableObject {
     guard !normalizedTitle.isEmpty, !normalizedDetail.isEmpty else { return }
 
     var profile = state.profile
-    var memory = profile.personalMemory ?? Self.defaultProfileMemory
+    var memory = profile.personalMemory ?? []
     memory.insert(
       ProfileMemory(
         id: UUID().uuidString,
@@ -2645,7 +2652,6 @@ final class JobmaxxingStore: ObservableObject {
 
   private func normalizeUserVisibleState() -> Bool {
     let original = try? encoder.encode(state)
-    state.profile = Self.normalizedProfileForDisplay(state.profile)
     state.jobs = state.jobs.map(Self.normalizedJobForDisplay)
     state.documents = state.documents.map(Self.normalizedDocumentForDisplay)
     state.events = state.events.map(Self.normalizedEventForDisplay)
@@ -2654,63 +2660,6 @@ final class JobmaxxingStore: ObservableObject {
     state.contacts = state.contacts?.map(Self.normalizedContactForDisplay)
     state.promptMemory = state.promptMemory.map(Self.normalizedUserFacingText)
     return original != (try? encoder.encode(state))
-  }
-
-  private static func normalizedProfileForDisplay(_ profile: CandidateProfile) -> CandidateProfile {
-    var next = profile
-    next.headline = next.headline.map(normalizedUserFacingText)
-    next.about = next.about.map(normalizedUserFacingText)
-    next.targetRoles = next.targetRoles.map(normalizedUserFacingText)
-    next.compensationGoal = normalizedUserFacingText(next.compensationGoal)
-    next.writingPreferences = next.writingPreferences.map(normalizedUserFacingText)
-    next.evidence = next.evidence.map { evidence in
-      var normalized = evidence
-      normalized.title = normalizedUserFacingText(normalized.title)
-      normalized.proof = normalizedUserFacingText(normalized.proof)
-      normalized.sourceURL = normalizedSourceReference(normalized.sourceURL)
-      normalized.tags = normalized.tags.map(normalizedUserFacingText)
-      return normalized
-    }
-    next.experience = next.experience?.map { experience in
-      var normalized = experience
-      normalized.title = normalizedUserFacingText(normalized.title)
-      normalized.summary = normalizedUserFacingText(normalized.summary)
-      normalized.bullets = normalized.bullets.map(normalizedUserFacingText)
-      normalized.sourceURL = normalizedSourceReference(normalized.sourceURL)
-      normalized.projects = experience.projects?.map { project in
-        var nextProject = project
-        nextProject.name = normalizedUserFacingText(nextProject.name)
-        nextProject.summary = normalizedUserFacingText(nextProject.summary)
-        nextProject.detail = normalizedUserFacingText(nextProject.detail)
-        nextProject.specificSample = normalizedUserFacingText(nextProject.specificSample)
-        nextProject.tools = nextProject.tools.map(normalizedUserFacingText)
-        nextProject.metrics = nextProject.metrics.map(normalizedUserFacingText)
-        nextProject.tags = nextProject.tags.map(normalizedUserFacingText)
-        nextProject.sourceURL = normalizedSourceReference(nextProject.sourceURL)
-        return nextProject
-      }
-      return normalized
-    }
-    next.skills = next.skills?.map(normalizedUserFacingText)
-    next.profileProjects = next.profileProjects?.map { project in
-      var normalized = project
-      normalized.summary = normalizedUserFacingText(normalized.summary)
-      normalized.tags = normalized.tags.map(normalizedUserFacingText)
-      return normalized
-    }
-    next.personalMemory = next.personalMemory?.map { memory in
-      var normalized = memory
-      normalized.title = normalizedUserFacingText(normalized.title)
-      normalized.detail = normalizedUserFacingText(normalized.detail)
-      return normalized
-    }
-    next.linkedInImportPlan = next.linkedInImportPlan.map { plan in
-      var normalized = plan
-      normalized.fields = normalized.fields.map(normalizedUserFacingText)
-      normalized.steps = normalized.steps.map(normalizedUserFacingText)
-      return normalized
-    }
-    return next
   }
 
   private static func normalizedJobForDisplay(_ job: JobRecord) -> JobRecord {
@@ -2753,7 +2702,6 @@ final class JobmaxxingStore: ObservableObject {
     next.coverLetter = normalizedDraftBodyText(next.coverLetter)
     next.recruiterMessage = normalizedUserFacingText(next.recruiterMessage)
     next.screeningAnswers = next.screeningAnswers.map(normalizedDraftBodyText)
-    next.evidenceLinks = next.evidenceLinks.map(normalizedSourceReference)
     next.claimTrace = next.claimTrace?.map { trace in
       var normalized = trace
       normalized.evidenceLabel = normalizedUserFacingText(normalized.evidenceLabel)
@@ -2767,14 +2715,12 @@ final class JobmaxxingStore: ObservableObject {
 
   private static func normalizedCompanyForDisplay(_ company: CompanyProfile) -> CompanyProfile {
     var next = company
-    next.website = normalizedSourceReference(next.website)
     next.summary = normalizedUserFacingText(next.summary)
     next.submittedMaterials = next.submittedMaterials.map { material in
       var normalized = material
       normalized.materialType = normalizedUserFacingText(normalized.materialType)
       normalized.title = normalizedUserFacingText(normalized.title)
       normalized.summary = normalizedUserFacingText(normalized.summary)
-      normalized.sourceURL = normalizedSourceReference(normalized.sourceURL)
       return normalized
     }
     next.people = next.people.map { person in
@@ -2795,7 +2741,6 @@ final class JobmaxxingStore: ObservableObject {
     next.websitePages = next.websitePages.map { page in
       var normalized = page
       normalized.title = normalizedUserFacingText(normalized.title)
-      normalized.url = normalizedSourceReference(normalized.url)
       normalized.summary = normalizedUserFacingText(normalized.summary)
       return normalized
     }
@@ -2804,7 +2749,6 @@ final class JobmaxxingStore: ObservableObject {
     next.hiringSignals = next.hiringSignals.map(normalizedUserFacingText)
     next.risks = next.risks.map(normalizedUserFacingText)
     next.openQuestions = next.openQuestions.map(normalizedUserFacingText)
-    next.sourceURLs = next.sourceURLs.map(normalizedSourceReference)
     next.agentPlan = next.agentPlan.map(normalizedUserFacingText)
     return next
   }
@@ -2843,34 +2787,13 @@ final class JobmaxxingStore: ObservableObject {
     normalizedUserFacingText(contact.name)
   }
 
-  private static func normalizedSourceReference(_ value: String) -> String {
-    normalizedUserFacingText(value)
-  }
-
   private static func normalizedDraftBodyText(_ value: String) -> String {
-    isSourceLanguageArtifact(value) ? value : normalizedUserFacingText(value)
-  }
-
-  private static func isSourceLanguageArtifact(_ value: String) -> Bool {
-    value.range(of: #"\b(Sehr geehrte|Ich bewerbe mich|Finanzthemen|Schweizerdeutsch|Warum Example)\b"#, options: [.regularExpression, .caseInsensitive]) != nil
+    value.trimmed
   }
 
   static func normalizedUserFacingText(_ value: String) -> String {
-    let protectedSourceRole = "__SOURCE_WORKING_STUDENT__"
     var next = value
       .replacingOccurrences(of: "&amp;", with: "&")
-      .replacingOccurrences(of: #"\bAIML\s*-\s*"#, with: "", options: .regularExpression)
-      .replacingOccurrences(of: #"\bAIML\b"#, with: "AI and ML", options: .regularExpression)
-      .replacingOccurrences(of: #"\bAI/ML\b"#, with: "AI and ML", options: .regularExpression)
-      .replacingOccurrences(of: #"\bData\s*/\s*ML\s*/\s*AI Intern\b"#, with: "Data, ML, and AI Intern", options: .regularExpression)
-      .replacingOccurrences(of: #"\bData\s*/\s*ML\s*/\s*AI\b"#, with: "Data, ML, and AI", options: .regularExpression)
-      .replacingOccurrences(of: #"\bIntern Applied AI\s*&\s*AI-Platform\b"#, with: "Applied AI and AI Platform Intern", options: .regularExpression)
-      .replacingOccurrences(of: #"\bApplied AI\s*&\s*AI-Platform Intern\b"#, with: "Applied AI and AI Platform Intern", options: .regularExpression)
-      .replacingOccurrences(of: "Daten trifft auf Systeme: Trainee-Programm, 80-100%", with: "Data and Systems Trainee Program, 80-100%")
-      .replacingOccurrences(of: "Contracted as working student", with: "Contracted as a working student (source role title: \(protectedSourceRole))")
-      .replacingOccurrences(of: "source role title: Working Student", with: "source role title: \(protectedSourceRole)")
-      .replacingOccurrences(of: protectedSourceRole, with: "working student")
-      .replacingOccurrences(of: "Apple Mail contract evidence: Local Candidate Vertrag.pdf", with: "Apple Mail contract evidence: Local Candidate contract.pdf (original German filename: Local Candidate Vertrag.pdf)")
     next = next.replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression)
     return next.trimmed
   }
@@ -2940,8 +2863,14 @@ final class JobmaxxingStore: ObservableObject {
         lastMessagePreview: profile.lastMessagePreview,
         databasePath: profile.databasePath
       )
-      var contact = Self.contactByApplyingWhatsAppProfile(nextContacts[index], profile: profile, candidate: candidate, company: company)
-      profile = Self.profileByAddingDrafts(profile, company: company, person: legacyPerson(from: contact), purpose: "Reply to the latest incoming WhatsApp message.")
+      var contact = Self.contactByApplyingWhatsAppProfile(nextContacts[index], profile: profile, candidate: candidate)
+      profile = Self.profileByAddingDrafts(
+        profile,
+        company: company,
+        person: legacyPerson(from: contact),
+        purpose: "Reply to the latest incoming WhatsApp message.",
+        senderName: state.profile.name
+      )
       var communication = contact.communicationProfile ?? PersonCommunicationProfile()
       communication.whatsApp = profile
       communication.appWideRules = Self.whatsAppAppWideRules
@@ -2979,112 +2908,37 @@ final class JobmaxxingStore: ObservableObject {
   }
 
   private func mergeCompanyProfilesDefaults() -> Bool {
-    var changed = false
-    let shouldSeedSampleCompanies = state.companyProfiles == nil
-    var profiles = state.companyProfiles ?? Self.defaultCompanyProfiles
-    if state.companyProfiles == nil {
-      changed = true
-    }
-
-    let existingIDs = Set(profiles.map(\.id))
-    let missingDefaults = Self.defaultCompanyProfiles.filter { !existingIDs.contains($0.id) }
-    if !missingDefaults.isEmpty {
-      profiles.append(contentsOf: missingDefaults)
-      changed = true
-    }
-
-    for job in state.jobs {
-      let result = Self.companyBySyncing(job: job, into: profiles)
-      if result.changed {
-        profiles = result.profiles
-        changed = true
-      }
-    }
-
-    for experience in profileExperience {
-      let organization = experience.organization.trimmed
-      guard !organization.isEmpty,
-            !["Project", "Open-source project"].contains(organization) else { continue }
-      let id = Self.companyID(for: organization)
-      if let index = profiles.firstIndex(where: { $0.id == id }) {
-        if !profiles[index].experienceIDs.contains(experience.id) {
-          profiles[index].experienceIDs.append(experience.id)
-          changed = true
-        }
-        if profiles[index].summary.trimmed.isEmpty || profiles[index].summary.localizedCaseInsensitiveContains("created locally") {
-          profiles[index].summary = experience.summary
-          changed = true
-        }
-      } else {
-        profiles.append(
-          CompanyProfile(
-            id: id,
-            name: organization,
-            website: experience.sourceURL,
-            linkedInURL: "",
-            category: "Experience",
-            size: "Unknown",
-            headquarters: experience.location,
-            publicStatus: "Unknown",
-            summary: experience.summary,
-            relationship: "Worked with",
-            applicationIDs: [],
-            experienceIDs: [experience.id],
-            submittedMaterials: [],
-            people: [],
-            research: Self.emptyCompanyResearch(companyName: organization, website: experience.sourceURL, linkedInURL: ""),
-            nextActions: Self.companyNextActions(name: organization),
-            notes: experience.bullets.joined(separator: "\n")
-          )
-        )
-        changed = true
-      }
-    }
-
-    if shouldSeedSampleCompanies {
-      for project in profileProjects {
-        let id = Self.companyID(for: project.name)
-        if !profiles.contains(where: { $0.id == id }) {
-          profiles.append(
-            CompanyProfile(
-              id: id,
-              name: project.name,
-              website: project.url,
-              linkedInURL: "",
-              category: "User proof",
-              size: "Unknown",
-              headquarters: "Unknown",
-              publicStatus: "Unknown",
-              summary: project.summary,
-              relationship: "Built by user",
-              applicationIDs: [],
-              experienceIDs: [],
-              submittedMaterials: [],
-              people: [],
-              research: Self.emptyCompanyResearch(companyName: project.name, website: project.url, linkedInURL: ""),
-              nextActions: Self.companyNextActions(name: project.name),
-              notes: ""
-            )
-          )
-          changed = true
-        }
-      }
-    }
-
-    state.companyProfiles = profiles.sorted { left, right in
-      if left.relationship == right.relationship {
-        return left.name < right.name
-      }
-      return left.relationship < right.relationship
-    }
-    return changed
+    guard state.companyProfiles == nil else { return false }
+    state.companyProfiles = []
+    return true
   }
 
   private func applyProfileDefaults() -> Bool {
     var changed = false
-    if state.profile.experience == nil { state.profile.experience = Self.defaultProfileExperience; changed = true }
-    if state.profile.profileProjects == nil { state.profile.profileProjects = Self.defaultProfileProjects; changed = true }
-    if state.profile.personalMemory == nil { state.profile.personalMemory = Self.defaultProfileMemory; changed = true }
+    if state.profile.experience == nil {
+      state.profile.experience = []
+      changed = true
+    }
+    if state.profile.skills == nil {
+      state.profile.skills = []
+      changed = true
+    }
+    if state.profile.profileProjects == nil {
+      state.profile.profileProjects = []
+      changed = true
+    }
+    if state.profile.personalMemory == nil {
+      state.profile.personalMemory = []
+      changed = true
+    }
+    if state.profile.certifications == nil {
+      state.profile.certifications = []
+      changed = true
+    }
+    if state.profile.education == nil {
+      state.profile.education = []
+      changed = true
+    }
     return changed
   }
 
@@ -3351,8 +3205,7 @@ final class JobmaxxingStore: ObservableObject {
   private static func contactByApplyingWhatsAppProfile(
     _ contact: ContactRecord,
     profile: WhatsAppThreadProfile,
-    candidate: WhatsAppThreadCandidate,
-    company: CompanyProfile
+    candidate: WhatsAppThreadCandidate
   ) -> ContactRecord {
     var next = contact
     let messages = profile.messages ?? []
@@ -3373,19 +3226,16 @@ final class JobmaxxingStore: ObservableObject {
       next.relationship = "Hiring contact"
     }
     next.notes = cleanedWhatsAppImportNotes(next.notes)
-    if messages.contains(where: { !$0.isFromMe && $0.text.localizedCaseInsensitiveContains("supply chain") && $0.text.localizedCaseInsensitiveContains("intern") }) {
-      if next.role.trimmed.isEmpty {
-        next.role = "Supply Chain internship contact"
-      }
-      next.notes = joinedUnique([
-        next.notes,
-        "Asked to schedule a brief call about a Supply Chain internship at \(company.name)."
-      ])
-    }
     return next
   }
 
-  private static func profileByAddingDrafts(_ profile: WhatsAppThreadProfile, company: CompanyProfile, person: CompanyPerson, purpose: String) -> WhatsAppThreadProfile {
+  private static func profileByAddingDrafts(
+    _ profile: WhatsAppThreadProfile,
+    company: CompanyProfile,
+    person: CompanyPerson,
+    purpose: String,
+    senderName: String
+  ) -> WhatsAppThreadProfile {
     var next = profile
     let firstName = person.name.split(separator: " ").first.map(String.init) ?? person.name
     if latestUnansweredIncomingText(profile.messages ?? []) == nil, !(profile.messages ?? []).isEmpty {
@@ -3393,7 +3243,12 @@ final class JobmaxxingStore: ObservableObject {
       next.suggestedEmailMessage = ""
       return next
     }
-    if let reply = suggestedWhatsAppReply(profile: profile, firstName: firstName, companyName: company.name) {
+    if let reply = suggestedWhatsAppReply(
+      profile: profile,
+      firstName: firstName,
+      companyName: company.name,
+      senderName: senderName
+    ) {
       next.suggestedDirectMessage = reply
       next.suggestedEmailMessage = ""
       return next
@@ -3406,7 +3261,7 @@ final class JobmaxxingStore: ObservableObject {
       cleanPurpose,
       "Would you point me to the right person or tell me what to watch for?"
     ].joined(separator: " ")
-    next.suggestedEmailMessage = [
+    next.suggestedEmailMessage = ([
       "Subject: Quick question on \(company.name)",
       "",
       "Hi \(firstName),",
@@ -3417,58 +3272,39 @@ final class JobmaxxingStore: ObservableObject {
       cleanPurpose,
       "",
       "Would you be open to pointing me toward the right person or sharing what I should understand first?",
-      "",
-      "Best,",
-      "the user"
-    ].joined(separator: "\n")
+      ""
+    ] + messageClosing(signOff: "Best,", senderName: senderName)).joined(separator: "\n")
     return next
   }
 
-  private static func suggestedWhatsAppReply(profile: WhatsAppThreadProfile, firstName: String, companyName: String) -> String? {
+  private static func suggestedWhatsAppReply(
+    profile: WhatsAppThreadProfile,
+    firstName: String,
+    companyName: String,
+    senderName: String
+  ) -> String? {
     guard let latestIncoming = latestUnansweredIncomingText(profile.messages ?? []) else {
       return nil
     }
     let name = firstName.trimmed.isEmpty || firstName.contains("+") ? nameFromWhatsAppSignature(messages: profile.messages ?? []) : firstName
     let greetingName = name.trimmed.isEmpty ? "" : " \(name)"
     let lower = latestIncoming.lowercased()
-    if lower.contains("18:00") || lower.contains("18:30") || lower.contains("would that be okay") {
-      return [
-        "Good afternoon\(greetingName),",
-        "",
-        "Yes, 18:00-18:30 works for me. Please call me when you are ready.",
-        "",
-        "Kind regards,",
-        "the user"
-      ].joined(separator: "\n")
-    }
-    if lower.contains("today") && lower.contains("tomorrow") && (lower.contains("call") || lower.contains("available")) {
-      let opportunity = lower.contains("supply chain") && lower.contains("intern")
-        ? "the internship opportunity with the Supply Chain team"
-        : "the opportunity"
-      return [
-        "Good afternoon\(greetingName),",
-        "",
-        "Thank you for reaching out and for the context. I would be very interested to discuss \(opportunity).",
-        "",
-        "I am free for the rest of today, so please let me know what time works best for you. I am also free tomorrow if that would suit you better.",
-        "",
-        "Kind regards,",
-        "the user"
-      ].joined(separator: "\n")
-    }
     if lower.contains("call") || lower.contains("available") {
-      return [
+      return ([
         "Good afternoon\(greetingName),",
         "",
         "Thank you for reaching out. I would be happy to speak.",
         "",
-        "I am free for the rest of the day, so please let me know what time works best for you. I am also free tomorrow if that would fit better.",
-        "",
-        "Kind regards,",
-        "the user"
-      ].joined(separator: "\n")
+        "Please send a few times that work for you, and I will confirm one.",
+        ""
+      ] + messageClosing(signOff: "Kind regards,", senderName: senderName)).joined(separator: "\n")
     }
     return nil
+  }
+
+  private static func messageClosing(signOff: String, senderName: String) -> [String] {
+    let name = senderName.trimmed
+    return name.isEmpty ? [signOff] : [signOff, name]
   }
 
   private static func latestUnansweredIncomingText(_ messages: [WhatsAppThreadMessage]) -> String? {
@@ -3787,7 +3623,7 @@ final class JobmaxxingStore: ObservableObject {
       .filter { !$0.isEmpty }
       .uniqued
     contact.research = Self.deepContactResearchProfile(contact: contact, company: company, sources: sources)
-    let draft = wantsDraft ? Self.followUpDraft(for: contact) : ""
+    let draft = wantsDraft ? Self.followUpDraft(for: contact, senderName: state.profile.name) : ""
     let emailStatus = wantsEmail || lower.contains("deep") || lower.contains("profile")
       ? Self.emailSearchStatus(for: contact)
       : ""
@@ -3892,39 +3728,29 @@ final class JobmaxxingStore: ObservableObject {
     ].joined(separator: "\n")
   }
 
-  private static func followUpDraft(for contact: ContactRecord) -> String {
+  private static func followUpDraft(for contact: ContactRecord, senderName: String) -> String {
     let firstName = contact.name.split(separator: " ").first.map(String.init) ?? contact.name
-    return [
+    return ([
       "Good afternoon \(firstName),",
       "",
       "Thank you for getting in touch.",
       "",
       "I would be happy to send over any additional information that would be useful. Please let me know if there is anything specific you would like from me before the next step.",
-      "",
-      "Kind regards,",
-      "the user"
-    ].joined(separator: "\n")
+      ""
+    ] + messageClosing(signOff: "Kind regards,", senderName: senderName)).joined(separator: "\n")
   }
 
   private static func contactWhatsAppProfileSummary(contact: ContactRecord) -> String {
     guard let profile = contact.communicationProfile?.whatsApp,
-          let firstIncoming = profile.messages?.first(where: { !$0.isFromMe })?.text.trimmed else {
+          let messages = profile.messages,
+          !messages.isEmpty else {
       return "No linked WhatsApp conversation is saved."
     }
-    var points: [String] = []
-    if firstIncoming.localizedCaseInsensitiveContains("Example Contact") {
-      points.append("The saved thread mentions Example Contact.")
-    }
-    if firstIncoming.localizedCaseInsensitiveContains("Supply Chain") && firstIncoming.localizedCaseInsensitiveContains("intern") {
-      points.append("The saved thread mentions a supply-chain internship.")
-    }
-    if firstIncoming.localizedCaseInsensitiveContains("brief call") {
-      points.append("\(contact.name) asked for a brief call.")
-    }
-    if profile.messages?.contains(where: { !$0.isFromMe && $0.text.contains("18:00") }) == true {
-      points.append("The saved conversation includes a proposed time around 18:00.")
-    }
-    return points.isEmpty ? "WhatsApp thread is saved for context and reply drafting." : points.joined(separator: " ")
+    let incomingCount = messages.filter { !$0.isFromMe }.count
+    let replyStatus = latestUnansweredIncomingText(messages) == nil
+      ? "No unanswered incoming message is detected."
+      : "The latest incoming message may need a reply."
+    return "WhatsApp thread saved with \(incomingCount) incoming message\(incomingCount == 1 ? "" : "s"). \(replyStatus)"
   }
 
   private static func contactAgentRuns(contact: ContactRecord, companyName: String) -> [ResearchAgentRun] {
@@ -5024,14 +4850,6 @@ extension JobmaxxingStore {
     )
   ]
 
-  static let defaultProfileSkills: [String] = []
-
-  static let defaultProfileExperience: [ProfileExperience] = []
-
-  static let defaultProfileProjects: [ProfileProject] = []
-
-  static let defaultProfileMemory: [ProfileMemory] = []
-
   static let defaultCompanyProfiles: [CompanyProfile] = []
 
   static func companyID(for name: String) -> String {
@@ -5561,10 +5379,10 @@ extension JobmaxxingStore {
 
   static let defaultState = JobmaxxingState(
     profile: CandidateProfile(
-      name: "Candidate",
-      headline: "",
-      linkedInURL: "",
-      about: "",
+      name: "",
+      headline: nil,
+      linkedInURL: nil,
+      about: nil,
       targetRoles: [],
       locations: [],
       workAuthorization: "",

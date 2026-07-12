@@ -19,36 +19,126 @@ import {
 } from "../lib/jobmaxxing";
 import { buildAutomationPlaybook, buildMarketIntelligence } from "../lib/intelligence";
 import { defaultStore } from "../lib/seed";
-import { buildStoreStatus, readStore, updateStore, writeStore } from "../lib/storage";
+import { readStore, updateStore, writeStore } from "../lib/storage";
 import { logActivityWorkflow, saveProfileWorkflow } from "../lib/workflows";
 import { profileSchema } from "../lib/contracts";
+import { normalizeCompanies } from "../lib/companies";
 
 const execFileAsync = promisify(execFile);
+const testProfile = {
+  ...defaultStore.profile,
+  name: "Morgan Ellis",
+  targetRoles: ["AI Product Engineer", "Workflow Engineer"],
+  locations: ["Zurich", "Remote"],
+  compensationGoal: "A product role with clear ownership and room to build.",
+  workAuthorization: "Eligible to work in Switzerland.",
+  strengths: [
+    {
+      id: "fact-agent-systems",
+      label: "Built agent workflows",
+      proof: "Designed multi-step agent workflows with browser use, local data, review loops, and explicit safety gates.",
+      tags: ["agents", "automation", "workflow", "browser", "review"]
+    },
+    {
+      id: "fact-product-delivery",
+      label: "Shipped workflow software",
+      proof: "Built a TypeScript operations workspace with tested intake, review, and approval flows.",
+      tags: ["product", "typescript", "testing", "operations"]
+    },
+    {
+      id: "fact-finance-operations",
+      label: "Worked with finance operations",
+      proof: "Built decision dashboards over financial records and operational ledgers.",
+      tags: ["finance", "operations", "data", "dashboards"]
+    }
+  ],
+  experience: [
+    {
+      id: "exp-workflow-engineer",
+      title: "Product Engineer",
+      organization: "Cedar Systems",
+      location: "Zurich",
+      period: "Recent role",
+      summary: "Built agent-assisted operations software for research and review teams.",
+      bullets: [
+        "Shipped TypeScript workflows with human approval gates.",
+        "Added regression tests for intake and document review."
+      ],
+      projects: [
+        {
+          id: "proj-review-router",
+          name: "Review router",
+          summary: "Routed research requests through evidence lookup and approval.",
+          detail: "Designed an inspectable workflow from request intake through evidence review and final approval.",
+          specificSample:
+            "A saved request moved through source lookup, draft generation, and a user approval gate before any external action.",
+          tools: ["TypeScript", "local storage", "browser tools"],
+          metrics: ["Covered each state transition with regression tests"],
+          tags: ["agents", "workflow", "review"],
+          sourceUrl: "https://example.com/work/review-router"
+        }
+      ],
+      sourceUrl: "https://example.com/work"
+    }
+  ],
+  dealBreakers: ["No product ownership"],
+  styleGuide: ["Use plain language and concrete evidence."],
+  promptMemory: ["Prefer one detailed project sample over a list of shallow claims."]
+} satisfies typeof defaultStore.profile;
+
 const savedJob = createJobRecord(
   {
     company: "Northstar Climate Bank",
     role: "AI Product Engineer",
     description: "Own agent workflows, dashboards, finance data, testing, and operational automation."
   },
-  defaultStore.profile
+  testProfile
 );
 const storeWithSavedJob = {
   ...defaultStore,
+  profile: testProfile,
   jobs: [savedJob]
 };
 
 describe("jobmaxxing core", () => {
-  it("starts without sample target applications in production defaults", () => {
+  it("starts with an empty candidate story and no private identity or path", () => {
+    expect(defaultStore.profile).toMatchObject({
+      name: "",
+      targetRoles: [],
+      locations: [],
+      compensationGoal: "",
+      workAuthorization: "",
+      strengths: [],
+      experience: [],
+      dealBreakers: [],
+      styleGuide: [],
+      promptMemory: []
+    });
+    expect(defaultStore.profile.permissions.hermesAgentPath).toBe("");
+    expect(defaultStore.hermes.agentPath).toBe("");
+    expect(JSON.stringify(defaultStore)).not.toMatch(/\/(Users|home)\//);
+  });
+
+  it("starts without inferred companies or applications", () => {
     expect(defaultStore.jobs).toEqual([]);
-    expect(defaultStore.companies.map((company) => company.name)).not.toContain("HelioForge Robotics");
+    expect(defaultStore.companies).toEqual([]);
+  });
+
+  it("keeps saved profiles strict while allowing an empty unsaved bootstrap", () => {
+    expect(() => profileSchema.parse(defaultStore.profile)).toThrow();
+    expect(profileSchema.parse(testProfile).name).toBe(testProfile.name);
+  });
+
+  it("preserves an explicit empty company list even when jobs exist", () => {
+    expect(normalizeCompanies({ companies: [], jobs: [savedJob] })).toEqual([]);
   });
 
   it("scores evidence-backed agent roles higher than unrelated roles", () => {
-    const agentRole = scoreJob(defaultStore.profile, {
+    const agentRole = scoreJob(testProfile, {
       role: "Agent Workflow Engineer",
       description: "Build browser automation, agent review loops, TypeScript workflows, and approval surfaces."
     });
-    const unrelatedRole = scoreJob(defaultStore.profile, {
+    const unrelatedRole = scoreJob(testProfile, {
       role: "Restaurant General Manager",
       description: "Own kitchen staffing, vendor ordering, menu planning, and hospitality standards."
     });
@@ -64,10 +154,10 @@ describe("jobmaxxing core", () => {
         role: "AI Product Engineer",
         description: "Own agent workflows, dashboards, finance data, testing, and operational automation."
       },
-      defaultStore.profile
+      testProfile
     );
 
-    const pack = buildApplicationPack(defaultStore.profile, job);
+    const pack = buildApplicationPack(testProfile, job);
 
     expect(pack.coverLetter).toContain(job.company);
     expect(pack.coverLetter).toContain("I am interested in the");
@@ -95,7 +185,7 @@ describe("jobmaxxing core", () => {
         description: "Build hiring workflow tools.",
         sourceUrl: "company.example/careers"
       },
-      defaultStore.profile
+      testProfile
     );
 
     expect(job.sourceUrl).toBe("https://company.example/careers");
@@ -107,35 +197,37 @@ describe("jobmaxxing core", () => {
           description: "Build hiring workflow tools.",
           sourceUrl: "javascript:alert(1)"
         },
-        defaultStore.profile
+        testProfile
       )
     ).toThrow("Unsupported URL scheme");
   });
 
-  it("normalizes user-facing drift while preserving source-language artifacts", async () => {
+  it("normalizes generic display drift without rewriting profile provenance", async () => {
     const dir = await mkdtemp(join(tmpdir(), "jobmaxxing-normalize-"));
     const path = join(dir, "store.json");
-    const rawPack = buildApplicationPack(defaultStore.profile, savedJob);
+    const sourceProof = "Contracted as a research assistant at Cedar Systems to support reporting.";
+    const sourceMemory = "Source file: candidate-record.pdf";
+    const rawPack = buildApplicationPack(testProfile, savedJob);
     const driftedJob = {
       ...savedJob,
       id: "job-language-drift",
-      company: "Example Manufacturing",
+      company: "Aster Rail",
       role: "Intern Applied AI &amp; AI-Platform",
       keywords: ["AIML", "agent-based workflows"],
       documents: {
         ...rawPack,
         resumeHeadline: "Intern Applied AI &amp; AI-Platform candidate",
         recruiterMessage: "Hi, I found the Data / ML / AI Intern role.",
-        followUpMessage: "Following up on Daten trifft auf Systeme: Trainee-Programm, 80-100%.",
-        coverLetter: "Sehr geehrte Frau Example,\n\nIch bewerbe mich für das Trainee-Programm Daten trifft auf Systeme."
+        followUpMessage: "Following up on Finance &amp; Engineering.",
+        coverLetter: "Sehr geehrte Frau Malcolm,\n\nIch bewerbe mich für das Trainee-Programm Finance trifft auf Engineering."
       }
     };
     const driftedContact = {
-      id: "example-contact-live",
-      name: "Example Contact",
-      role: "Supply Chain internship contact",
+      id: "marisol-live",
+      name: "Marisol",
+      role: "Operations hiring contact",
       jobDescription: "",
-      linkedInUrl: "https://example.com/profiles/example-contact",
+      linkedInUrl: "https://example.com/people/marisol-vega",
       phone: "",
       email: "",
       location: "",
@@ -147,10 +239,10 @@ describe("jobmaxxing core", () => {
       projectNotes: "",
       companyLinks: [
         {
-          id: "example-contact-exampleco",
-          companyId: "exampleco",
-          companyName: "ExampleCo",
-          role: "Supply Chain internship contact",
+          id: "marisol-aster",
+          companyId: "aster-rail",
+          companyName: "Aster Rail",
+          role: "Operations hiring contact",
           relationship: "Hiring contact",
           notes: "",
           sourceUrl: ""
@@ -158,8 +250,8 @@ describe("jobmaxxing core", () => {
       ],
       research: {
         status: "Enhanced",
-        summary: "LinkedIn public search identifies him as Example Contact.",
-        publicFacts: ["LinkedIn public search identifies him as Example Contact."],
+        summary: "A public source identifies this contact as Marisol Vega.",
+        publicFacts: ["A public source identifies this contact as Marisol Vega."],
         sourceUrls: [],
         openQuestions: [],
         proposedAdditions: []
@@ -171,19 +263,16 @@ describe("jobmaxxing core", () => {
           ...storeWithSavedJob,
           jobs: [driftedJob],
           profile: {
-            ...defaultStore.profile,
+            ...testProfile,
             strengths: [
               {
                 id: "fact-contract",
-                label: "Example Ops / Example Data data tooling contract",
-                proof: "Contracted as working student at Example Data AG / Example Ops AG to support reporting.",
-                tags: ["working student"]
+                label: "Reporting contract",
+                proof: sourceProof,
+                tags: ["Research Assistant"]
               }
             ],
-            promptMemory: [
-              "Example Ops / Example Data can be claimed as contracted working student work.",
-              "Apple Mail contract evidence: Example User Vertrag.pdf"
-            ]
+            promptMemory: [sourceMemory]
           },
           contacts: [driftedContact]
         },
@@ -198,12 +287,12 @@ describe("jobmaxxing core", () => {
       expect(job.keywords).toContain("AI and ML");
       expect(job.documents?.resumeHeadline).toBe("Applied AI and AI Platform Intern candidate");
       expect(job.documents?.recruiterMessage).toContain("Data, ML, and AI Intern");
-      expect(job.documents?.followUpMessage).toContain("Data and Systems Trainee Program, 80-100%");
-      expect(job.documents?.coverLetter).toContain("Sehr geehrte Frau Example");
-      expect(normalized.contacts?.[0].name).toBe("Example Contact");
-      expect(normalized.profile.strengths[0].proof).toContain("source role title: working student");
-      expect(normalized.profile.strengths[0].tags).toContain("Working Student");
-      expect(normalized.profile.promptMemory.join(" ")).toContain("original German filename: Example User Vertrag.pdf");
+      expect(job.documents?.followUpMessage).toContain("Finance & Engineering");
+      expect(job.documents?.coverLetter).toContain("Sehr geehrte Frau Malcolm");
+      expect(normalized.contacts?.[0].name).toBe("Marisol");
+      expect(normalized.profile.strengths[0].proof).toBe(sourceProof);
+      expect(normalized.profile.strengths[0].tags).toEqual(["Research Assistant"]);
+      expect(normalized.profile.promptMemory).toEqual([sourceMemory]);
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
@@ -216,10 +305,10 @@ describe("jobmaxxing core", () => {
         role: "Restaurant General Manager",
         description: "Own kitchen staffing, vendor ordering, menu planning, hospitality standards, and food safety."
       },
-      defaultStore.profile
+      testProfile
     );
 
-    const pack = buildApplicationPack(defaultStore.profile, job);
+    const pack = buildApplicationPack(testProfile, job);
 
     expect(pack.resumeBullets).toEqual([]);
     expect(pack.claimTrace).toEqual([]);
@@ -230,7 +319,7 @@ describe("jobmaxxing core", () => {
 
   it("blocks protected-site browser automation by default", () => {
     const plan = buildBrowserPlan(
-      defaultStore.profile,
+      testProfile,
       "Apply to this role",
       "https://www.linkedin.com/jobs/view/example"
     );
@@ -241,7 +330,7 @@ describe("jobmaxxing core", () => {
   });
 
   it("builds mock interview packs for saved jobs", () => {
-    const pack = buildInterviewPack(defaultStore.profile, savedJob, "call");
+    const pack = buildInterviewPack(testProfile, savedJob, "call");
 
     expect(pack.mode).toBe("call");
     expect(pack.warmup.length).toBeGreaterThan(1);
@@ -251,7 +340,7 @@ describe("jobmaxxing core", () => {
   it("audits AI slop and emits a rewrite prompt", () => {
     const audit = auditWriting(
       "I am excited to apply because your innovative company is changing the landscape with cutting-edge AI.",
-      defaultStore.profile
+      testProfile
     );
 
     expect(audit.score).toBeLessThan(100);
@@ -270,7 +359,7 @@ describe("jobmaxxing core", () => {
   it("flags empty mapping talk as AI slop", () => {
     const audit = auditWriting(
       "The role maps to work I have already done in agent workflows with browser use, local data, review loops, and explicit safety gates.",
-      defaultStore.profile
+      testProfile
     );
 
     expect(audit.ready).toBe(false);
@@ -284,10 +373,10 @@ describe("jobmaxxing core", () => {
         role: "AI Product Engineer",
         description: "Own agent workflows, dashboards, finance data, testing, and operational automation."
       },
-      defaultStore.profile
+      testProfile
     );
-    const pack = buildApplicationPack(defaultStore.profile, job);
-    expect(defaultStore.profile.experience.length).toBeGreaterThan(0);
+    const pack = buildApplicationPack(testProfile, job);
+    expect(testProfile.experience.length).toBeGreaterThan(0);
     expect(pack.coverLetter).toMatch(/For example,/);
     expect(pack.coverLetter).toContain("My CV is attached");
     expect(pack.coverLetter.split("\n\n").length).toBeGreaterThanOrEqual(3);
@@ -296,7 +385,7 @@ describe("jobmaxxing core", () => {
   it("identifies unsupported candidate claims instead of passing weak drafts", () => {
     const audit = auditWriting(
       "I have shipped global payment systems and I am a strong fit for this high-scale payments role.",
-      defaultStore.profile
+      testProfile
     );
 
     expect(audit.ready).toBe(false);
@@ -311,7 +400,7 @@ describe("jobmaxxing core", () => {
   it("passes concise drafts that cite saved evidence", () => {
     const audit = auditWriting(
       "I designed multi-step agent workflows with browser use, local data, review loops, and explicit safety gates.",
-      defaultStore.profile
+      testProfile
     );
 
     expect(audit.ready).toBe(true);
@@ -322,7 +411,7 @@ describe("jobmaxxing core", () => {
 
   it("accepts evidence references through case-insensitive tags", () => {
     const audit = auditWriting("I built work around deepseek-v4-flash and opencode routing.", {
-      ...defaultStore.profile,
+      ...testProfile,
       strengths: [
         {
           id: "fact-opencode",
@@ -365,6 +454,7 @@ describe("jobmaxxing core", () => {
       jid: "41790000000@s.whatsapp.net",
       companyName: "Northstar Climate Bank",
       personName: "Maya Patel",
+      senderName: testProfile.name,
       purpose: "I want to understand who owns AI workflow hiring.",
       messages: [
         { fromMe: true, text: "Hey Maya, quick question?" },
@@ -379,6 +469,7 @@ describe("jobmaxxing core", () => {
     expect(profile.directMessageFormat).toContain("short");
     expect(profile.suggestedDirectMessage).toContain("Hey Maya");
     expect(profile.suggestedEmailMessage).toContain("Subject:");
+    expect(profile.suggestedEmailMessage).toContain(testProfile.name);
     expect(profile.suggestedEmailMessage).not.toBe(profile.suggestedDirectMessage);
   });
 
@@ -589,10 +680,10 @@ describe("jobmaxxing core", () => {
   it("accepts provider-specific reasoning levels", () => {
     for (const reasoningEffort of ["none", "minimal", "low", "medium", "high", "xhigh", "max"] as const) {
       profileSchema.parse({
-        ...defaultStore.profile,
+        ...testProfile,
         modelTiers: [
           {
-            ...defaultStore.profile.modelTiers[0],
+            ...testProfile.modelTiers[0],
             reasoningEffort
           }
         ]
@@ -764,15 +855,37 @@ describe("jobmaxxing core", () => {
     process.env.JOBMAXXING_DATA_PATH = path;
     try {
       const legacy = { ...defaultStore } as Partial<typeof defaultStore>;
+      const legacyProfile = { ...defaultStore.profile } as Partial<(typeof defaultStore)["profile"]>;
       delete legacy.revision;
       delete legacy.hermes;
       delete legacy.connectors;
+      delete legacy.companies;
+      delete legacyProfile.name;
+      delete legacyProfile.targetRoles;
+      delete legacyProfile.locations;
+      delete legacyProfile.compensationGoal;
+      delete legacyProfile.workAuthorization;
+      delete legacyProfile.strengths;
+      delete legacyProfile.experience;
+      delete legacyProfile.dealBreakers;
+      delete legacyProfile.styleGuide;
+      delete legacyProfile.promptMemory;
+      legacy.profile = legacyProfile as (typeof defaultStore)["profile"];
       await writeFile(path, `${JSON.stringify(legacy, null, 2)}\n`, "utf8");
 
       const normalized = await readStore(path);
       expect(normalized.revision).toBe(defaultStore.revision);
       expect(normalized.hermes.defaultModelTier).toBe("final-review");
       expect(normalized.connectors.map((connector) => connector.id)).toContain("hermes");
+      expect(normalized.companies).toEqual([]);
+      expect(normalized.profile).toMatchObject({
+        name: "",
+        targetRoles: [],
+        locations: [],
+        strengths: [],
+        experience: [],
+        promptMemory: []
+      });
 
       const next = await updateStore((store) => ({ ...store }));
       expect(next.revision).toBe(defaultStore.revision + 1);
@@ -812,168 +925,6 @@ describe("jobmaxxing core", () => {
       const updated = await updateStore((store) => ({ ...store }), path);
       expect(updated.connectors).toContainEqual(unknownConnector);
       expect((await readStore(path)).connectors).toContainEqual(unknownConnector);
-    } finally {
-      await rm(dir, { recursive: true, force: true });
-    }
-  });
-
-  it("includes Grok as a default model connector", () => {
-    const grok = defaultStore.connectors.find((connector) => connector.id === "xai");
-    expect(grok).toMatchObject({
-      id: "xai",
-      label: "Grok",
-      provider: "xAI",
-      enabled: true,
-      connected: false
-    });
-    expect(defaultStore.hermes.enabledConnectors).toContain("xai");
-  });
-
-  it("does not turn disabled or default connectors into connected rows", async () => {
-    const dir = await mkdtemp(join(tmpdir(), "jobmaxxing-connector-state-"));
-    const path = join(dir, "store.json");
-    try {
-      await writeFile(
-        path,
-        `${JSON.stringify(
-          {
-            ...defaultStore,
-            connectors: [
-              { ...defaultStore.connectors[0], id: "openai", enabled: false, connected: true },
-              { ...defaultStore.connectors[1], id: "opencode", enabled: true, connected: false }
-            ]
-          },
-          null,
-          2
-        )}\n`,
-        "utf8"
-      );
-
-      const normalized = await readStore(path);
-      expect(normalized.connectors.find((connector) => connector.id === "openai")).toMatchObject({
-        enabled: false,
-        connected: false
-      });
-      expect(normalized.connectors.find((connector) => connector.id === "hermes")?.connected).toBe(false);
-    } finally {
-      await rm(dir, { recursive: true, force: true });
-    }
-  });
-
-  it("keeps large status payloads compact instead of returning full store data", () => {
-    const baseJob = createJobRecord(
-      {
-        company: "Payload Company",
-        role: "Payload Role",
-        description: "Build local-first job search workflows."
-      },
-      defaultStore.profile
-    );
-    const largeStore = {
-      ...defaultStore,
-      jobs: Array.from({ length: 120 }, (_, index) => ({
-        ...baseJob,
-        id: `job-${index}`,
-        company: `Company ${index}`,
-        role: `Role ${index}`,
-        description: "Large saved job description ".repeat(120),
-        notes: "Large private note ".repeat(80),
-        ledger: Array.from({ length: 12 }, (_, eventIndex) => ({
-          id: `event-${index}-${eventIndex}`,
-          actor: "codex" as const,
-          approval: "proposed" as const,
-          jobId: `job-${index}`,
-          sequence: index * 100 + eventIndex,
-          summary: "Detailed event summary ".repeat(20),
-          type: "tracking" as const
-        }))
-      })),
-      events: Array.from({ length: 600 }, (_, index) => ({
-        id: `store-event-${index}`,
-        actor: "codex" as const,
-        approval: "proposed" as const,
-        jobId: `job-${index % 120}`,
-        sequence: index,
-        summary: "Full event detail ".repeat(25),
-        type: "tracking" as const
-      }))
-    };
-
-    const status = buildStoreStatus(largeStore);
-    const fullBytes = Buffer.byteLength(JSON.stringify(largeStore));
-    const statusBytes = Buffer.byteLength(JSON.stringify(status));
-
-    expect(status.counts.jobs).toBe(120);
-    expect(status.jobs).toHaveLength(20);
-    expect(statusBytes).toBeLessThan(fullBytes / 8);
-    expect(JSON.stringify(status)).not.toContain("Large saved job description");
-  });
-
-  it("normalizes large company and contact graphs without repeated lookup blowups", async () => {
-    const dir = await mkdtemp(join(tmpdir(), "jobmaxxing-large-"));
-    const path = join(dir, "store.json");
-    const baseJob = createJobRecord(
-      {
-        company: "Large Company",
-        role: "Large Role",
-        description: "Build agents, documents, contacts, and application flows."
-      },
-      defaultStore.profile
-    );
-    const jobs = Array.from({ length: 600 }, (_, index) => ({
-      ...baseJob,
-      id: `large-job-${index}`,
-      company: `Large Company ${index % 160}`,
-      role: `Large Role ${index}`,
-      description: `Build agents, documents, contacts, and application flows ${index}.`
-    }));
-    const companies = Array.from({ length: 160 }, (_, index) => ({
-      id: `large-company-${index}`,
-      name: `Large Company ${index}`,
-      website: `https://large-${index}.example.com`,
-      linkedInUrl: "",
-      category: "Target company",
-      size: "Unknown",
-      headquarters: "Unknown",
-      publicStatus: "Unknown",
-      summary: `Large company ${index} summary.`,
-      relationship: "Application target",
-      applicationIds: [],
-      submittedMaterials: [],
-      people: Array.from({ length: 3 }, (_, personIndex) => ({
-        id: `large-person-${index}-${personIndex}`,
-        name: `Person ${index}-${personIndex}`,
-        title: "Hiring context",
-        sourceUrl: `https://example.com/people/${index}-${personIndex}`,
-        relationship: "Potential hiring context",
-        notes: "Imported from company profile."
-      })),
-      research: {
-        status: "Not researched",
-        confidence: 0,
-        websitePages: [],
-        products: [],
-        businessModel: "",
-        leadership: [],
-        hiringSignals: [],
-        risks: [],
-        openQuestions: [],
-        sourceUrls: [],
-        agentPlan: []
-      },
-      nextActions: [],
-      notes: ""
-    }));
-
-    try {
-      await writeStore({ ...storeWithSavedJob, jobs, companies }, path);
-      const started = performance.now();
-      const normalized = await readStore(path);
-      const elapsedMs = performance.now() - started;
-
-      expect(normalized.companies.length).toBeGreaterThanOrEqual(160);
-      expect(normalized.contacts?.length).toBe(480);
-      expect(elapsedMs).toBeLessThan(1500);
     } finally {
       await rm(dir, { recursive: true, force: true });
     }

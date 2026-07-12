@@ -4,7 +4,7 @@ Jobmaxxing is a local-first job search operating system. Its sole job is to help
 
 It gives humans and coding agents one place to:
 
-- run a native macOS workspace with pages for dashboard, chat, applications, companies, contacts, writing, interviews, browser, and settings
+- run a native macOS workspace with pages for dashboard, profile, chat, applications, companies, contacts, writing, interviews, browser, and settings
 - track roles, stages, notes, risks, and application history
 - build company profiles with research packets, people maps, source links, application material, and hiring context
 - attach local resumes, writing samples, project briefs, and other documents to applications, companies, writing, or chat work
@@ -78,7 +78,7 @@ The companion API local store is `data/jobmaxxing.json`. Override it when testin
 JOBMAXXING_DATA_PATH=/tmp/jobmaxxing.json npm run api
 ```
 
-The browser UI is intentionally a separate desktop project at `an adjacent local web project`. It is not part of this native app repository and must never be copied into the clean public checkout.
+The browser UI is intentionally a separate desktop project. It is not part of this native app repository and must never be copied into the clean public checkout.
 
 Secrets do not belong in the store. The native settings page exposes three editable model tiers:
 
@@ -104,7 +104,7 @@ Example client config:
     "jobmaxxing": {
       "command": "npm",
       "args": ["run", "mcp"],
-      "cwd": "<repository-root>"
+      "cwd": "/path/to/Jobmaxxing"
     }
   }
 }

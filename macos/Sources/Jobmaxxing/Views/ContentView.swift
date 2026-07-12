@@ -28,19 +28,32 @@ struct ContentView: View {
   var body: some View {
     Group {
       if selection == .settings {
-        SettingsView {
-          selection = lastPrimarySelection
-        }
+        SettingsView(
+          onBack: { selection = lastPrimarySelection }
+        )
       } else {
         NavigationSplitView(columnVisibility: $columnVisibility) {
           SidebarView(selection: $selection)
             .navigationSplitViewColumnWidth(min: 184, ideal: 224, max: 260)
+            .toolbar(removing: .sidebarToggle)
         } detail: {
           detailView
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(AppBackdrop())
         }
         .navigationSplitViewStyle(.balanced)
+        .toolbar {
+          ToolbarItem(placement: .navigation) {
+            Button {
+              columnVisibility = columnVisibility == .all ? .detailOnly : .all
+            } label: {
+              Image(systemName: "sidebar.left")
+            }
+            .focusEffectDisabled()
+            .accessibilityLabel(columnVisibility == .all ? "Hide Sidebar" : "Show Sidebar")
+            .help(columnVisibility == .all ? "Hide Sidebar" : "Show Sidebar")
+          }
+        }
       }
     }
     .tint(AppTheme.accent)
@@ -169,6 +182,8 @@ struct ContentView: View {
         store.selectedJobID = jobID
         selection = .applications
       }
+    case .profile:
+      ProfileView()
     case .chat:
       HermesChatView(draft: $hermesDraft, attachmentIDs: $hermesAttachmentIDs)
     case .applications:
@@ -210,9 +225,7 @@ struct ContentView: View {
     case .browser:
       BrowserPlanView(drafts: $browserDrafts)
     case .settings:
-      SettingsView {
-        selection = lastPrimarySelection
-      }
+      SettingsView(onBack: { selection = lastPrimarySelection })
     }
   }
 }
@@ -227,7 +240,7 @@ enum LaunchRoutePolicy {
 
   private static func isRestorable(_ section: AppSection) -> Bool {
     switch section {
-    case .dashboard, .applications, .companies, .contacts, .writing, .interviews:
+    case .dashboard, .profile, .applications, .companies, .contacts, .writing, .interviews:
       true
     case .chat, .browser, .settings:
       false

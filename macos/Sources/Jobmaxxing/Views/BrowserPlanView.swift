@@ -186,7 +186,7 @@ struct BrowserPolicyEditor: View {
       )
       BrowserLockedGateRow(
         title: "Final submit",
-        detail: "the user always reviews the final state and presses submit. This gate cannot be disabled here."
+        detail: "You always review the final state and press submit. This gate cannot be disabled here."
       )
 
       Divider()
@@ -224,11 +224,11 @@ func enforcedBrowserPolicy(_ policy: BrowserPolicy) -> BrowserPolicy {
 func browserSafetyRule(for mode: PermissionMode) -> String {
   switch mode {
   case .manualOnly:
-    "the user controls every browser action and presses final submit."
+    "You control every browser action and press final submit."
   case .assistFill:
-    "Jobmaxxing may prepare reviewed fields on allowed sites. Protected sites stay manual, and the user presses final submit."
+    "Jobmaxxing may prepare reviewed fields on allowed sites. Protected sites stay manual, and you press final submit."
   case .autonomousPrepare:
-    "Jobmaxxing may prepare drafts and checklists. It does not operate protected sites or submit, and the user keeps final control."
+    "Jobmaxxing may prepare drafts and checklists. It does not operate protected sites or submit, and you keep final control."
   }
 }
 
@@ -353,7 +353,7 @@ private struct BrowserSafetySummary: View {
         .font(.caption)
         .foregroundStyle(.secondary)
         .fixedSize(horizontal: false, vertical: true)
-      Text("the user always reviews the final state and presses submit.")
+      Text("You always review the final state and press submit.")
         .font(.caption)
         .foregroundStyle(.secondary)
         .fixedSize(horizontal: false, vertical: true)
@@ -363,7 +363,7 @@ private struct BrowserSafetySummary: View {
   private var modeLine: String {
     switch policy.permissionMode {
     case .manualOnly:
-      "the user controls every browser action."
+      "You control every browser action."
     case .assistFill:
       "Jobmaxxing fills reviewed fields, then stops before submit."
     case .autonomousPrepare:
@@ -430,7 +430,7 @@ private extension PermissionMode {
   var detail: String {
     switch self {
     case .manualOnly:
-      "the user controls every action."
+      "You control every action."
     case .assistFill:
       "Jobmaxxing fills reviewed fields. It stops before submit."
     case .autonomousPrepare:
@@ -441,8 +441,8 @@ private extension PermissionMode {
 
 private func browserHumanResponsibilityCopy(_ text: String) -> String {
   text
-    .replacingOccurrences(of: "User reviews", with: "the user reviews")
-    .replacingOccurrences(of: "user reviews", with: "the user reviews")
-    .replacingOccurrences(of: "user review", with: "the user review")
-    .replacingOccurrences(of: "the user", with: "the user")
+    .replacingOccurrences(of: "User reviews", with: "You review")
+    .replacingOccurrences(of: "user reviews", with: "you review")
+    .replacingOccurrences(of: "user review", with: "you review")
+    .replacingOccurrences(of: "the user", with: "you")
 }

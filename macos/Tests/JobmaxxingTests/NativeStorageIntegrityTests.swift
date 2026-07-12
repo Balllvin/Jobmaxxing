@@ -15,6 +15,21 @@ final class NativeStorageIntegrityTests: XCTestCase {
     XCTAssertEqual(store.state.profile.name, JobmaxxingStore.defaultState.profile.name)
   }
 
+  func testFreshNativeStateDoesNotInventAUserStory() {
+    let profile = JobmaxxingStore.defaultState.profile
+
+    XCTAssertTrue(profile.name.isEmpty)
+    XCTAssertNil(profile.headline)
+    XCTAssertNil(profile.about)
+    XCTAssertTrue(profile.targetRoles.isEmpty)
+    XCTAssertTrue(profile.locations.isEmpty)
+    XCTAssertTrue(profile.evidence.isEmpty)
+    XCTAssertEqual(profile.experience, [])
+    XCTAssertEqual(profile.profileProjects, [])
+    XCTAssertEqual(profile.personalMemory, [])
+    XCTAssertTrue(JobmaxxingStore.defaultCompanyProfiles.isEmpty)
+  }
+
   func testCorruptNativeStateIsBackedUpAndNotOverwritten() throws {
     let directory = try temporaryDirectory()
     defer { try? FileManager.default.removeItem(at: directory) }
@@ -105,163 +120,157 @@ final class NativeStorageIntegrityTests: XCTestCase {
     XCTAssertEqual(store.state.modelRoutes.first?.model, "deepseek-v4-flash")
   }
 
-  func testNativeLoadNormalizesUserVisibleLanguageDriftIdempotently() throws {
+  func testNativeLoadPreservesProfileTextAndSourcesExactly() throws {
     let directory = try temporaryDirectory()
     defer { try? FileManager.default.removeItem(at: directory) }
     let stateURL = directory.appendingPathComponent("state.json")
     var state = JobmaxxingStore.defaultState
-    state.profile.evidence = [
+    var profile = state.profile
+    profile.name = "Rae Okafor"
+    profile.headline = "Builds calm tools for complex work."
+    profile.about = "I started close to operations.\n\nNow I build software that makes review and ownership clear."
+    profile.experience = [
+      ProfileExperience(
+        id: "experience-one",
+        title: "Product engineer",
+        organization: "Northstar Labs",
+        location: "Remote",
+        period: "Three years",
+        summary: "Worked beside operators.\n\nTurned repeated handoffs into one reviewable workflow.",
+        bullets: ["Reduced duplicate handoffs.", "Kept final approval with the operator."],
+        sourceURL: "file:///private/profile/employment-record.pdf",
+        projects: [
+          ProfileExperienceProject(
+            id: "experience-project-one",
+            name: "Planning workspace",
+            summary: "A shared view of daily work.",
+            detail: "Mapped the manual process.\n\nShipped the smallest useful workflow.",
+            specificSample: "One team replaced three handoff sheets with a single review.",
+            tools: ["Swift", "SQLite"],
+            metrics: ["Three handoffs became one review"],
+            tags: ["operations"],
+            sourceURL: "file:///private/profile/project-notes.md"
+          )
+        ]
+      )
+    ]
+    profile.evidence = [
       EvidenceItem(
-        id: "fact-contract",
-        title: "Example Ops / Example Data data tooling contract",
-        proof: "Contracted as working student at Example Data AG / Example Ops AG to support reporting.",
-        sourceURL: "Apple Mail contract evidence: Example User Vertrag.pdf",
-        tags: ["working student"],
+        id: "evidence-one",
+        title: "Planning outcome",
+        proof: "A weekly reconciliation went from a full afternoon to one review pass.\n\nThe operator kept final approval.",
+        sourceURL: "file:///private/profile/outcome-note.md",
+        tags: ["workflow"],
         strength: 5
       )
     ]
+    profile.personalMemory = [
+      ProfileMemory(
+        id: "memory-one",
+        kind: "Working preference",
+        title: "Clear ownership",
+        detail: "I prefer short feedback loops.\n\nI write down who makes the final call.",
+        source: "User note",
+        strength: 5
+      )
+    ]
+    state.profile = profile
+    state.companyProfiles = []
+    try JSONEncoder().encode(state).write(to: stateURL, options: [.atomic])
+
+    let store = JobmaxxingStore(stateURL: stateURL)
+    let encoder = JSONEncoder()
+    encoder.outputFormatting = [.sortedKeys]
+
+    XCTAssertEqual(try encoder.encode(store.state.profile), try encoder.encode(profile))
+    XCTAssertEqual(store.state.profile.about, profile.about)
+    XCTAssertEqual(store.state.profile.experience?.first?.projects?.first?.detail, profile.experience?.first?.projects?.first?.detail)
+    XCTAssertEqual(store.state.profile.evidence.first?.proof, profile.evidence.first?.proof)
+    XCTAssertEqual(store.state.profile.evidence.first?.sourceURL, profile.evidence.first?.sourceURL)
+    XCTAssertEqual(store.state.profile.personalMemory?.first?.detail, profile.personalMemory?.first?.detail)
+  }
+
+  func testExplicitEmptyCompanyProfilesRemainEmptyWhenJobsAndExperienceExist() throws {
+    let directory = try temporaryDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let stateURL = directory.appendingPathComponent("state.json")
+    var state = JobmaxxingStore.defaultState
     state.profile.experience = [
       ProfileExperience(
-        id: "exp-contract",
-        title: "working student",
-        organization: "Example Data AG / Example Ops AG",
-        location: "Zurich",
-        period: "Contract",
-        summary: "Contracted as working student at Example Data AG / Example Ops AG.",
-        bullets: ["Supported reporting."],
-        sourceURL: "Apple Mail contract evidence: Example User Vertrag.pdf"
+        id: "experience-company",
+        title: "Engineer",
+        organization: "Northstar Labs",
+        location: "Remote",
+        period: "Two years",
+        summary: "Built internal tools.",
+        bullets: [],
+        sourceURL: "https://example.com/work"
       )
     ]
     state.jobs = [
       JobRecord(
-        id: "job-drift",
-        company: "Example Manufacturing",
-        role: "Intern Applied AI &amp; AI-Platform",
-        sourceURL: "https://example.com",
-        description: "Work on AIML and RAG.",
-        stage: .ready,
-        score: 91,
-        keywords: ["AIML", "Data / ML / AI Intern"],
+        id: "job-company",
+        company: "Cedar Systems",
+        role: "Product engineer",
+        sourceURL: "https://example.com/job",
+        description: "Build tools for operational teams.",
+        stage: .saved,
+        score: 0,
+        keywords: [],
         risks: [],
-        nextActions: ["Review Daten trifft auf Systeme: Trainee-Programm, 80-100%"],
-        notes: "Source title: Daten trifft auf Systeme: Trainee-Programm, 80-100%",
-        draft: ApplicationDraft(
-          headline: "Intern Applied AI &amp; AI-Platform candidate",
-          resumeBullets: ["Evidence for Data / ML / AI Intern."],
-          coverLetter: "Sehr geehrte Frau Example,\n\nIch bewerbe mich für das Trainee-Programm Finance trifft auf Engineering.",
-          recruiterMessage: "Hi, I found the Data / ML / AI Intern role.",
-          screeningAnswers: ["Warum Example?: Finance trifft auf Engineering."],
-          evidenceLinks: ["Apple Mail contract evidence: Example User Vertrag.pdf"],
-          claimTrace: nil,
-          assumptions: ["Role priorities include AIML."],
-          missingEvidence: nil
-        )
-      )
-    ]
-    state.companyProfiles = [
-      CompanyProfile(
-        id: "example-manufacturing",
-        name: "Example Manufacturing",
-        website: "https://example.com",
-        linkedInURL: "",
-        category: "Applied AI",
-        size: "Unknown",
-        headquarters: "Zug",
-        publicStatus: "Public job posting reviewed",
-        summary: "Intern Applied AI &amp; AI-Platform role.",
-        relationship: "Application target",
-        applicationIDs: ["job-drift"],
-        experienceIDs: [],
-        submittedMaterials: [
-          CompanySubmission(
-            id: "submission-drift",
-            jobID: "job-drift",
-            materialType: "Application draft",
-            title: "Daten trifft auf Systeme: Trainee-Programm, 80-100% application pack",
-            summary: "Drafted for Intern Applied AI &amp; AI-Platform.",
-            sourceURL: "https://example.com",
-            status: "Proposed"
-          )
-        ],
-        people: [],
-        research: CompanyResearch(
-          status: "Source reviewed",
-          confidence: 90,
-          websitePages: [
-            CompanyResearchPage(
-              id: "page-drift",
-              title: "Example Manufacturing Intern Applied AI &amp; AI-Platform",
-              url: "https://example.com",
-              summary: "Source page for Daten trifft auf Systeme: Trainee-Programm, 80-100%."
-            )
-          ],
-          products: [],
-          businessModel: "",
-          leadership: [],
-          hiringSignals: ["AIML"],
-          risks: [],
-          openQuestions: [],
-          sourceURLs: ["https://example.com"],
-          agentPlan: []
-        ),
         nextActions: [],
-        notes: ""
-      )
-    ]
-    state.contacts = [
-      ContactRecord(
-        id: "example-contact-live",
-        name: "Example Contact",
-        role: "Supply Chain internship contact",
-        jobDescription: "",
-        linkedInURL: "https://ch.linkedin.com/in/example-contact-60b513129",
-        phone: "",
-        email: "",
-        location: "",
-        sourceURL: "",
-        relationship: "Hiring contact",
-        howMet: "WhatsApp",
         notes: "",
-        personalNotes: "",
-        projectNotes: "",
-        companyLinks: [
-          ContactCompanyLink(
-            id: "example-contact-company",
-            companyID: "example-company",
-            companyName: "Example Company",
-            role: "Supply Chain internship contact",
-            relationship: "Hiring contact",
-            notes: "",
-            sourceURL: ""
-          )
-        ],
-        research: ContactResearchProfile(
-          status: "Enhanced",
-          summary: "LinkedIn public search identifies him as Example Contact.",
-          publicFacts: ["LinkedIn public search identifies him as Example Contact."],
-          sourceURLs: [],
-          openQuestions: [],
-          proposedAdditions: []
-        )
+        draft: nil
       )
     ]
+    state.companyProfiles = []
     try JSONEncoder().encode(state).write(to: stateURL, options: [.atomic])
 
     let store = JobmaxxingStore(stateURL: stateURL)
-    let afterFirstLoad = try Data(contentsOf: stateURL)
-    _ = JobmaxxingStore(stateURL: stateURL)
-    let afterSecondLoad = try Data(contentsOf: stateURL)
 
-    XCTAssertEqual(store.state.jobs[0].role, "Applied AI and AI Platform Intern")
-    XCTAssertEqual(store.state.jobs[0].keywords, ["AI and ML", "Data, ML, and AI Intern"])
-    XCTAssertEqual(store.state.jobs[0].draft?.headline, "Applied AI and AI Platform Intern candidate")
-    XCTAssertTrue(store.state.jobs[0].draft?.coverLetter.contains("Sehr geehrte Frau Example") == true)
-    XCTAssertEqual(store.state.contacts?.first?.name, "Example Contact")
-    XCTAssertEqual(store.state.profile.experience?.first?.title, "Working Student")
-    XCTAssertTrue(store.state.profile.evidence[0].proof.contains("source role title: working student"))
-    XCTAssertTrue(store.state.profile.evidence[0].sourceURL.contains("original German filename: Example User Vertrag.pdf"))
-    XCTAssertTrue(store.state.companyProfiles?.first?.submittedMaterials.first?.title.contains("Data and Systems Trainee Program, 80-100%") == true)
-    XCTAssertEqual(afterSecondLoad, afterFirstLoad)
+    XCTAssertEqual(store.state.companyProfiles, [])
+  }
+
+  func testProfileSaveFailureRollsBackInMemoryState() throws {
+    let directory = try temporaryDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let parentFile = directory.appendingPathComponent("not-a-directory")
+    try "blocking parent".write(to: parentFile, atomically: true, encoding: .utf8)
+    let store = JobmaxxingStore(stateURL: parentFile.appendingPathComponent("state.json"))
+    let previous = store.state.profile
+    var edited = previous
+    edited.name = "Unsaved name"
+
+    XCTAssertFalse(store.updateProfile(edited))
+    XCTAssertEqual(store.state.profile.name, previous.name)
+    XCTAssertEqual(store.state.profile.about, previous.about)
+  }
+
+  func testLinkedInPlanSurvivesUnrelatedEditsAndClearsWhenURLChanges() throws {
+    let directory = try temporaryDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let stateURL = directory.appendingPathComponent("state.json")
+    var state = JobmaxxingStore.defaultState
+    state.profile.linkedInURL = "https://www.linkedin.com/in/candidate"
+    state.profile.linkedInImportPlan = ProfileImportPlan(
+      sourceURL: "https://www.linkedin.com/in/candidate",
+      status: "Ready for review",
+      checkpoint: "Review before import",
+      steps: ["Open the public profile"],
+      fields: ["Experience"]
+    )
+    try JSONEncoder().encode(state).write(to: stateURL, options: [.atomic])
+    let store = JobmaxxingStore(stateURL: stateURL)
+
+    var unrelatedEdit = store.state.profile
+    unrelatedEdit.name = "Rae Okafor"
+    XCTAssertTrue(store.updateProfile(unrelatedEdit))
+    XCTAssertNotNil(store.state.profile.linkedInImportPlan)
+
+    var changedLink = store.state.profile
+    changedLink.linkedInURL = "https://www.linkedin.com/in/updated-candidate"
+    XCTAssertTrue(store.updateProfile(changedLink))
+    XCTAssertNil(store.state.profile.linkedInImportPlan)
   }
 
   private func temporaryDirectory() throws -> URL {

@@ -12,7 +12,7 @@ Recommended config:
     "jobmaxxing": {
       "command": "npm",
       "args": ["run", "mcp"],
-      "cwd": "<repository-root>"
+      "cwd": "/path/to/Jobmaxxing"
     }
   }
 }

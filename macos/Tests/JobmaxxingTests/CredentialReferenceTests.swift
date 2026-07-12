@@ -18,7 +18,7 @@ final class CredentialReferenceTests: XCTestCase {
   func testRawSecretsAndShellExpressionsAreRejected() {
     let environment: [String: String] = [:]
     XCTAssertFalse(isValidCredentialReference("123456:raw-bot-token", environment: environment))
-    XCTAssertFalse(isValidCredentialReference("ghp_abcdefghijklmnopqrstuvwxyz1234567890", environment: environment))
+    XCTAssertFalse(isValidCredentialReference("invalid-token-literal", environment: environment))
     XCTAssertFalse(isValidCredentialReference("hf_abcdefghijklmnopqrstuvwxyz1234567890", environment: environment))
     XCTAssertFalse(isValidCredentialReference("UNRECOGNIZED_IDENTIFIER_TOKEN", environment: environment))
     XCTAssertFalse(isValidCredentialReference("TOKEN-NAME", environment: environment))

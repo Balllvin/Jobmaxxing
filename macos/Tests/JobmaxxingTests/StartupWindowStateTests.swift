@@ -11,6 +11,7 @@ final class StartupWindowStateTests: XCTestCase {
   }
 
   func testLaunchRestoresCoherentWorkRoutes() {
+    XCTAssertEqual(LaunchRoutePolicy.restoredSection(from: AppSection.profile.rawValue), .profile)
     XCTAssertEqual(LaunchRoutePolicy.restoredSection(from: AppSection.applications.rawValue), .applications)
     XCTAssertEqual(LaunchRoutePolicy.restoredSection(from: AppSection.companies.rawValue), .companies)
     XCTAssertEqual(LaunchRoutePolicy.restoredSection(from: AppSection.interviews.rawValue), .interviews)

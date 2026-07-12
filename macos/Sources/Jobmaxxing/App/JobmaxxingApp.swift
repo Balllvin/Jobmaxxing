@@ -13,6 +13,8 @@ struct JobmaxxingApp: App {
         .frame(minWidth: JobmaxxingWindowLayout.minimumSize.width, minHeight: JobmaxxingWindowLayout.minimumSize.height)
     }
     .commands {
+      SidebarCommands()
+
       CommandMenu("Jobmaxxing") {
         Button("Upload Proof") {
           NotificationCenter.default.post(name: .openDocumentImporter, object: nil)
@@ -33,6 +35,7 @@ struct JobmaxxingApp: App {
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
   private var didRepairLaunchPlacement = false
+  private var didClearInitialFocus = false
 
   func applicationDidFinishLaunching(_ notification: Notification) {
     NSApp.setActivationPolicy(.regular)
@@ -48,7 +51,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
   private func applyWindowSizing(repairPlacement: Bool) {
     DispatchQueue.main.async {
-      let windows = NSApp.windows.filter { $0.title.contains("Jobmaxxing") }
+      let windows = NSApp.windows.filter { $0.isVisible }
       for window in windows {
         window.minSize = JobmaxxingWindowLayout.minimumSize
         guard repairPlacement, !self.didRepairLaunchPlacement else { continue }
@@ -66,6 +69,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       if repairPlacement, !windows.isEmpty {
         self.didRepairLaunchPlacement = true
       }
+
+      guard !self.didClearInitialFocus,
+            let window = windows.first(where: \.isKeyWindow) ?? windows.first
+      else { return }
+      DispatchQueue.main.async {
+        guard !self.didClearInitialFocus else { return }
+        self.didClearInitialFocus = true
+        window.makeFirstResponder(nil)
+      }
+
     }
   }
 }

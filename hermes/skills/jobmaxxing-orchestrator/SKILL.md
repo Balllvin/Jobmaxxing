@@ -89,3 +89,5 @@ It should run the official `hermes update` flow, reinstall this overlay, and lea
 - Soft close: looking forward to hearing back and learning more about the role.
 - Company research guides proof selection. Do not dump company bios into the letter.
 - Prefer a short direct answer over generic career advice.
+- For profile stories, write a complete, grounded first-person professional narrative in two to four short paragraphs.
+- Use plain prose for profile stories. Do not use headings, bullets, Markdown, or language about gaps, profile completeness, databases, evidence systems, or source filenames.

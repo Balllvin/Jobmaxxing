@@ -3,7 +3,7 @@ import XCTest
 
 final class ContactSourceLabelTests: XCTestCase {
   func testLinkedInPersonURLUsesProfileLabel() {
-    let source = ContactSourceLabel(rawValue: "https://ch.linkedin.com/in/example-contact-60b513129")
+    let source = ContactSourceLabel(rawValue: "https://ch.linkedin.com/in/example-candidate")
 
     XCTAssertEqual(source.title, "LinkedIn profile")
     XCTAssertEqual(source.rowLabel, "LinkedIn profile")
@@ -17,14 +17,10 @@ final class ContactSourceLabelTests: XCTestCase {
     XCTAssertNil(source.url)
   }
 
-  func testExample CompanySourcesUseUsefulSourceLabels() {
+  func testGenericCompanyURLUsesDomainLabel() {
     XCTAssertEqual(
-      ContactSourceLabel(rawValue: "https://www.example-company.com/en/working-at-example-company").title,
-      "Example Company careers"
-    )
-    XCTAssertEqual(
-      ContactSourceLabel(rawValue: "https://www.example-company.com/en/about-example-company/example-company-news").title,
-      "Example Company news"
+      ContactSourceLabel(rawValue: "https://careers.example.com/open-roles").title,
+      "careers.example.com"
     )
   }
 }

@@ -1,7 +1,6 @@
 import SwiftUI
 
 struct SidebarView: View {
-  @EnvironmentObject private var store: JobmaxxingStore
   @Binding var selection: AppSection
   @FocusState private var focusedSection: AppSection?
 
@@ -38,10 +37,7 @@ struct SidebarView: View {
       moveSelection(direction)
     }
     .safeAreaInset(edge: .bottom, spacing: 0) {
-      SidebarSettingsFooter(
-        selection: $selection,
-        displayName: SidebarDisplayName.userName(from: store.state.profile.name)
-      )
+      SidebarSettingsFooter(selection: $selection)
     }
   }
 
@@ -71,16 +67,8 @@ enum SidebarKeyboardNavigation {
   }
 }
 
-enum SidebarDisplayName {
-  static func userName(from rawName: String) -> String {
-    let name = rawName.trimmed
-    return name.isEmpty ? "Example User" : name
-  }
-}
-
 private struct SidebarSettingsFooter: View {
   @Binding var selection: AppSection
-  let displayName: String
 
   var body: some View {
     VStack(spacing: 0) {
@@ -90,7 +78,7 @@ private struct SidebarSettingsFooter: View {
         selection = .settings
       } label: {
         HStack(spacing: 10) {
-          Text(displayName)
+          Text("Settings")
             .font(.system(size: 14, weight: .medium))
             .foregroundStyle(.secondary)
             .lineLimit(1)
@@ -111,7 +99,7 @@ private struct SidebarSettingsFooter: View {
       }
       .buttonStyle(LiquidPressButtonStyle())
       .help("Settings")
-      .accessibilityLabel("Settings for \(displayName)")
+      .accessibilityLabel("Settings")
     }
     .background(.bar)
   }

@@ -4,7 +4,11 @@ import { normalizeExternalUrl } from "./urls";
 export const defaultCompanyProfiles: CompanyProfile[] = [];
 
 export function normalizeCompanies(store: Pick<JobmaxxingStore, "companies" | "jobs">): CompanyProfile[] {
-  const companies = store.companies?.length ? structuredClone(store.companies) : structuredClone(defaultCompanyProfiles);
+  const companies = Array.isArray(store.companies)
+    ? structuredClone(store.companies)
+    : structuredClone(defaultCompanyProfiles);
+  if (companies.length === 0) return companies;
+
   const index = buildCompanyIndex(companies);
   for (const job of store.jobs) {
     syncCompanyForJobInPlace(companies, index, job);
@@ -54,12 +58,11 @@ function syncCompanyForJobInPlace(
   }
 
   const company = companies[existingIndex];
-  company.applicationIds = uniqueStrings([...(company.applicationIds ?? []), job.id]);
+  company.applicationIds = uniqueStrings([...company.applicationIds, job.id]);
   company.website = company.website || sourceUrl;
-  company.research = company.research ?? emptyCompanyResearch(company.name, company.website, company.linkedInUrl);
-  company.research.sourceUrls = uniqueStrings([...(company.research.sourceUrls ?? []), sourceUrl].filter(Boolean));
-  company.research.hiringSignals = uniqueStrings([...(company.research.hiringSignals ?? []), ...job.keywords]);
-  company.nextActions = uniqueStrings([...(company.nextActions ?? []), ...job.nextActions]);
+  company.research.sourceUrls = uniqueStrings([...company.research.sourceUrls, sourceUrl].filter(Boolean));
+  company.research.hiringSignals = uniqueStrings([...company.research.hiringSignals, ...job.keywords]);
+  company.nextActions = uniqueStrings([...company.nextActions, ...job.nextActions]);
   companies[existingIndex] = company;
 }
 
@@ -152,8 +155,6 @@ function emptyCompanyResearch(companyName: string, website: string, linkedInUrl:
     agentPlan: companyAgentPlan(website, linkedInUrl)
   };
 }
-
-
 
 function researchPage(companyName: string, url: string, index: number): CompanyResearchPage {
   const lower = url.toLowerCase();

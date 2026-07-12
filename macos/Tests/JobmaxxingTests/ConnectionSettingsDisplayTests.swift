@@ -169,7 +169,7 @@ final class ConnectionSettingsDisplayTests: XCTestCase {
     XCTAssertFalse(store.updateConnectorConfig(
       connectorID: "xai",
       fieldID: "api-key-ref",
-      value: "ghp_abcdefghijklmnopqrstuvwxyz1234567890"
+      value: "invalid-token-literal"
     ))
     let savedValue = store.integrationConnectors
       .first(where: { $0.id == "xai" })?
@@ -183,7 +183,7 @@ final class ConnectionSettingsDisplayTests: XCTestCase {
     route.provider = "xAI"
     route.model = "grok-4.5"
     route.baseURL = "https://api.x.ai/v1"
-    route.keyReference = "ghp_abcdefghijklmnopqrstuvwxyz1234567890"
+    route.keyReference = "invalid-token-literal"
     XCTAssertFalse(store.updateModelRoute(route))
   }
 
@@ -237,7 +237,7 @@ final class ConnectionSettingsDisplayTests: XCTestCase {
     defer { try? FileManager.default.removeItem(at: stateURL.deletingLastPathComponent()) }
     let store = JobmaxxingStore(stateURL: stateURL)
     var settings = store.hermesChatState.settings
-    settings.telegramBotTokenReference = "ghp_abcdefghijklmnopqrstuvwxyz1234567890"
+    settings.telegramBotTokenReference = "invalid-token-literal"
 
     XCTAssertFalse(store.updateHermesChatSettings(settings))
     XCTAssertNotEqual(

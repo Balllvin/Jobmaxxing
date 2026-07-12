@@ -14,12 +14,10 @@ private func modelTierTitle(for id: String) -> String {
 private enum SettingsPage: String, CaseIterable, Identifiable {
   case setup
   case codeHelp
-  case account
   case providers
   case runtime
   case connections
   case permissions
-  case profile
 
   var id: String { rawValue }
 
@@ -27,12 +25,10 @@ private enum SettingsPage: String, CaseIterable, Identifiable {
     switch self {
     case .setup: "Setup"
     case .codeHelp: "Code Help"
-    case .account: "Account"
     case .providers: "Models"
     case .runtime: "Runtime"
     case .connections: "Connections"
     case .permissions: "Permissions"
-    case .profile: "Profile"
     }
   }
 
@@ -40,12 +36,10 @@ private enum SettingsPage: String, CaseIterable, Identifiable {
     switch self {
     case .setup: "list.number"
     case .codeHelp: "questionmark.bubble"
-    case .account: "person.crop.circle"
     case .providers: "cpu"
     case .runtime: "point.3.connected.trianglepath.dotted"
     case .connections: "link"
     case .permissions: "lock.shield"
-    case .profile: "person.text.rectangle"
     }
   }
 }
@@ -114,13 +108,10 @@ struct SettingsView: View {
       SetupSettingsPage(
         openConnections: { selectedPage = .connections },
         openModels: { selectedPage = .providers },
-        openRuntime: { selectedPage = .runtime },
-        openProfile: { selectedPage = .profile }
+        openRuntime: { selectedPage = .runtime }
       )
     case .codeHelp:
       CodeHelpSettingsPage()
-    case .account:
-      AccountSettingsPage()
     case .providers:
       ModelProvidersSettingsPage(onOpenProviderConnection: openProviderConnection)
     case .runtime:
@@ -129,8 +120,6 @@ struct SettingsView: View {
       ConnectionsSettingsPage(focusedConnectorID: $focusedConnectorID)
     case .permissions:
       PermissionsSettingsPage()
-    case .profile:
-      ProfileSettings()
     }
   }
 
@@ -247,47 +236,6 @@ private struct SettingsSidebarButton: View {
     .buttonStyle(LiquidPressButtonStyle())
     .accessibilityLabel(page.title)
     .accessibilityValue(isSelected ? "Selected" : "")
-  }
-}
-
-private struct AccountSettingsPage: View {
-  @EnvironmentObject private var store: JobmaxxingStore
-
-  var body: some View {
-    VStack(alignment: .leading, spacing: 18) {
-      SettingsFlatSection(title: "Account") {
-        VStack(alignment: .leading, spacing: 4) {
-          Text(store.state.profile.name)
-            .font(.title3.weight(.semibold))
-          Text(accountSubtitle)
-            .foregroundStyle(.secondary)
-            .fixedSize(horizontal: false, vertical: true)
-        }
-      }
-
-      SettingsFlatSection(title: "Local files") {
-        DisclosureGroup("Show paths agents use") {
-          VStack(alignment: .leading, spacing: 8) {
-            SettingsPathRow(label: "Agent layer", value: store.hermesSettings.layerPath)
-            SettingsPathRow(label: "Agent checkout", value: store.hermesSettings.installPath)
-            Text("Local by default. Agents use this context only after approval.")
-              .font(.caption)
-              .foregroundStyle(.secondary)
-          }
-          .padding(.top, 6)
-        }
-      }
-    }
-  }
-
-  private var accountSubtitle: String {
-    if let headline = store.state.profile.headline, !headline.trimmed.isEmpty {
-      return headline
-    }
-    if !store.state.profile.targetRoles.isEmpty {
-      return store.state.profile.targetRoles.compactJoined
-    }
-    return "Profile is ready for local job-search work."
   }
 }
 
@@ -908,10 +856,6 @@ func connectorState(_ connector: IntegrationConnector) -> ConnectorDisplayState 
   return connector.isConnected ? .ready : .setupRequired
 }
 
-func profileBriefGuidanceText() -> String {
-  "Write one useful brief. Include experience, target roles, location or remote constraints, strengths, proof, companies, communication style, working preferences, red flags, and anything Jobmaxxing needs for applications."
-}
-
 private struct ConnectorGroup: View {
   let state: ConnectorDisplayState
   let connectors: [IntegrationConnector]
@@ -991,298 +935,6 @@ private struct PermissionsSettingsPage: View {
         BrowserPolicyEditor()
       }
     }
-  }
-}
-
-private struct ProfileSettings: View {
-  @EnvironmentObject private var store: JobmaxxingStore
-  @State private var profileDraft: CandidateProfile?
-  @State private var isProfileDirty = false
-  @State private var profileSaveStatus = ""
-  @State private var linkedInURL = ""
-  @State private var memoryKind = "Preference"
-  @State private var memoryTitle = ""
-  @State private var memoryDetail = ""
-  @State private var memorySource = "User note"
-  @State private var memoryStrength = 4.0
-  @State private var showsStructuredFields = false
-  @State private var showsNoteDetails = false
-  @State private var showsExperienceEditor = false
-
-  var body: some View {
-    VStack(alignment: .leading, spacing: 18) {
-      SettingsFlatSection(title: "LinkedIn") {
-        TextField("Paste your LinkedIn profile URL", text: $linkedInURL)
-        HStack {
-          Button {
-            store.prepareLinkedInImport(sourceURL: linkedInURL)
-          } label: {
-            Label("Prepare import plan", systemImage: "safari")
-          }
-          .buttonStyle(.borderedProminent)
-
-          Text("Nothing opens or sends here.")
-            .font(.caption)
-            .foregroundStyle(.secondary)
-        }
-
-        if let plan = store.state.profile.linkedInImportPlan {
-          Divider()
-          DisclosureGroup(plan.checkpoint) {
-            VStack(alignment: .leading, spacing: 10) {
-              SettingsGrid(label: "Fields", values: plan.fields)
-              SettingsGrid(label: "Blocked", values: plan.blocked)
-            }
-            .padding(.top, 6)
-          }
-        }
-      }
-
-      SettingsFlatSection(title: "Profile") {
-        HStack {
-          if isProfileDirty {
-            Text("Unsaved edits")
-              .font(.caption)
-              .foregroundStyle(.secondary)
-          } else if !profileSaveStatus.isEmpty {
-            Text(profileSaveStatus)
-              .font(.caption)
-              .foregroundStyle(.secondary)
-          }
-          Spacer()
-          ImproveTextControl(
-            currentText: editableProfile.about ?? "",
-            context: [
-              "Name: \(editableProfile.name)",
-              "Headline: \(editableProfile.headline ?? "")",
-              "Targets: \(editableProfile.targetRoles.compactJoined)",
-              "Locations: \(editableProfile.locations.compactJoined)",
-              "Authorization: \(editableProfile.workAuthorization)",
-              "Compensation: \(editableProfile.compensationGoal)"
-            ].joined(separator: "\n"),
-            kind: "about me profile",
-            onApply: { value in
-              var profile = editableProfile
-              profile.about = value.trimmed.isEmpty ? nil : value
-              profileDraft = profile
-              isProfileDirty = true
-            }
-          )
-        }
-        TextField("About me", text: optionalProfileStringBinding(\.about), axis: .vertical)
-          .lineLimit(5...9)
-        if (editableProfile.about ?? "").trimmed.isEmpty {
-          Text(profileBriefGuidance)
-            .font(.caption)
-            .foregroundStyle(.secondary)
-            .fixedSize(horizontal: false, vertical: true)
-        }
-
-        DisclosureGroup("Exact profile fields", isExpanded: $showsStructuredFields) {
-          VStack(alignment: .leading, spacing: 10) {
-            ForEach(profileSummaryRows, id: \.label) { row in
-              LabeledContent(row.label) {
-                Text(row.value.trimmed.isEmpty ? "Not set" : row.value)
-                  .foregroundStyle(row.value.trimmed.isEmpty ? .secondary : .primary)
-                  .fixedSize(horizontal: false, vertical: true)
-              }
-            }
-
-            Divider()
-
-            TextField("Your name", text: profileStringBinding(\.name))
-            TextField("One-line positioning", text: optionalProfileStringBinding(\.headline))
-            TextField("Target roles, comma-separated", text: stringArrayBinding(\.targetRoles))
-            TextField("Target locations, comma-separated", text: stringArrayBinding(\.locations))
-            TextField("Work authorization rule", text: profileStringBinding(\.workAuthorization))
-            TextField("Compensation rule", text: profileStringBinding(\.compensationGoal))
-
-            Button {
-              saveProfileDraft()
-            } label: {
-              Label("Save profile changes", systemImage: "checkmark")
-            }
-            .buttonStyle(.borderedProminent)
-            .disabled(!isProfileDirty)
-          }
-          .padding(.top, 6)
-        }
-      }
-
-      SettingsFlatSection(title: "Experience writeups") {
-        VStack(alignment: .leading, spacing: 10) {
-          Text("CV bullets stay short. Add full project explanations here for applications and interview prep.")
-            .font(.caption)
-            .foregroundStyle(.secondary)
-          ForEach(store.profileExperience) { item in
-            ProfileExperienceRow(item: item)
-          }
-          DisclosureGroup("Add experience or project detail", isExpanded: $showsExperienceEditor) {
-            ExperienceEditorForm()
-              .padding(.top, 8)
-          }
-        }
-      }
-
-      SettingsFlatSection(title: "Projects and proof") {
-        VStack(spacing: 10) {
-          ForEach(store.profileProjects) { project in
-            ProjectRow(project: project)
-          }
-        }
-      }
-
-      SettingsFlatSection(title: "Skills") {
-        SettingsFlowTags(values: store.profileSkills)
-      }
-
-      SettingsFlatSection(title: "Saved notes") {
-        DisclosureGroup("Add detailed note", isExpanded: $showsNoteDetails) {
-          VStack(alignment: .leading, spacing: 8) {
-            HStack {
-              TextField("Type of note", text: $memoryKind)
-                .frame(width: 150)
-              TextField("Short title", text: $memoryTitle)
-            }
-            HStack {
-              Spacer()
-              ImproveTextControl(
-                currentText: memoryDetail,
-                context: "Kind: \(memoryKind)\nTitle: \(memoryTitle)\nSource: \(memorySource)",
-                kind: "profile memory note",
-                onApply: { memoryDetail = $0 }
-              )
-            }
-            TextField("Fact, preference, or warning to remember", text: $memoryDetail, axis: .vertical)
-              .lineLimit(2...4)
-            HStack {
-              TextField("Where this came from", text: $memorySource)
-              Slider(value: $memoryStrength, in: 1...5, step: 1) {
-                Text("Strength")
-              } minimumValueLabel: {
-                Text("1")
-              } maximumValueLabel: {
-                Text("5")
-              }
-              .frame(width: 160)
-              Button {
-                store.addProfileMemory(
-                  kind: memoryKind,
-                  title: memoryTitle,
-                  detail: memoryDetail,
-                  source: memorySource,
-                  strength: Int(memoryStrength)
-                )
-                memoryTitle = ""
-                memoryDetail = ""
-              } label: {
-                Label("Save", systemImage: "plus")
-              }
-              .buttonStyle(.borderedProminent)
-              .disabled(memoryTitle.trimmed.isEmpty || memoryDetail.trimmed.isEmpty)
-            }
-          }
-          .padding(.top, 6)
-        }
-
-        Divider()
-
-        VStack(alignment: .leading, spacing: 8) {
-          ForEach(store.profileMemory) { memory in
-            ProfileMemoryRow(memory: memory)
-          }
-        }
-      }
-    }
-    .onAppear {
-      linkedInURL = store.state.profile.linkedInURL ?? ""
-      if profileDraft == nil {
-        profileDraft = store.state.profile
-      }
-    }
-    .onDisappear {
-      if isProfileDirty {
-        saveProfileDraft()
-      }
-    }
-  }
-
-  private var profileBriefGuidance: String {
-    profileBriefGuidanceText()
-  }
-
-  private var profileSummaryRows: [(label: String, value: String)] {
-    let profile = editableProfile
-    return [
-      ("Name", profile.name),
-      ("Positioning", profile.headline ?? ""),
-      ("Targets", profile.targetRoles.compactJoined),
-      ("Locations", profile.locations.compactJoined),
-      ("Authorization", profile.workAuthorization),
-      ("Compensation", profile.compensationGoal)
-    ]
-  }
-
-  private var editableProfile: CandidateProfile {
-    profileDraft ?? store.state.profile
-  }
-
-  private func saveProfileDraft() {
-    guard let draft = profileDraft else { return }
-    var profile = store.state.profile
-    profile.name = draft.name
-    profile.headline = draft.headline
-    profile.about = draft.about
-    profile.targetRoles = draft.targetRoles
-    profile.locations = draft.locations
-    profile.workAuthorization = draft.workAuthorization
-    profile.compensationGoal = draft.compensationGoal
-    store.updateProfile(profile)
-    profileDraft = profile
-    isProfileDirty = false
-    profileSaveStatus = "Profile saved."
-  }
-
-  private func profileStringBinding(_ keyPath: WritableKeyPath<CandidateProfile, String>) -> Binding<String> {
-    Binding(
-      get: { editableProfile[keyPath: keyPath] },
-      set: { value in
-        var profile = editableProfile
-        profile[keyPath: keyPath] = value
-        profileDraft = profile
-        isProfileDirty = true
-        profileSaveStatus = ""
-      }
-    )
-  }
-
-  private func optionalProfileStringBinding(_ keyPath: WritableKeyPath<CandidateProfile, String?>) -> Binding<String> {
-    Binding(
-      get: { editableProfile[keyPath: keyPath] ?? "" },
-      set: { value in
-        var profile = editableProfile
-        profile[keyPath: keyPath] = value.trimmed.isEmpty ? nil : value
-        profileDraft = profile
-        isProfileDirty = true
-        profileSaveStatus = ""
-      }
-    )
-  }
-
-  private func stringArrayBinding(_ keyPath: WritableKeyPath<CandidateProfile, [String]>) -> Binding<String> {
-    Binding(
-      get: { editableProfile[keyPath: keyPath].joined(separator: ", ") },
-      set: { value in
-        var profile = editableProfile
-        profile[keyPath: keyPath] = value
-          .split(separator: ",")
-          .map { String($0).trimmed }
-          .filter { !$0.isEmpty }
-        profileDraft = profile
-        isProfileDirty = true
-        profileSaveStatus = ""
-      }
-    )
   }
 }
 
@@ -1944,303 +1596,5 @@ private struct SettingsFlowTags: View {
           .frame(maxWidth: .infinity, alignment: .leading)
       }
     }
-  }
-}
-
-private struct ProfileExperienceRow: View {
-  let item: ProfileExperience
-
-  var body: some View {
-    VStack(alignment: .leading, spacing: 6) {
-      HStack(alignment: .firstTextBaseline) {
-        Text(item.title)
-          .font(.headline)
-        Spacer()
-        Text(item.period)
-          .font(.caption.weight(.semibold))
-          .foregroundStyle(.secondary)
-      }
-      Text([item.organization, item.location].filter { !$0.trimmed.isEmpty }.joined(separator: " - "))
-        .font(.caption)
-        .foregroundStyle(.secondary)
-      Text(item.summary)
-        .font(.subheadline)
-        .fixedSize(horizontal: false, vertical: true)
-      CompactList(items: item.bullets)
-      if let projects = item.projects, !projects.isEmpty {
-        VStack(alignment: .leading, spacing: 8) {
-          ForEach(projects) { project in
-            VStack(alignment: .leading, spacing: 4) {
-              Text(project.name)
-                .font(.subheadline.weight(.semibold))
-              if !project.summary.trimmed.isEmpty {
-                labeledBlock("Summary", project.summary)
-              }
-              if !project.detail.trimmed.isEmpty {
-                labeledBlock("Detail", project.detail)
-              }
-              if !project.specificSample.trimmed.isEmpty {
-                labeledBlock("Specific sample", project.specificSample)
-              }
-              let tags = project.tools + project.metrics + project.tags
-              if !tags.isEmpty {
-                SettingsFlowTags(values: Array(tags.prefix(8)))
-              }
-            }
-            .padding(8)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 8))
-          }
-        }
-        .padding(.top, 4)
-      } else {
-        Text("No project writeups under this role yet.")
-          .font(.caption)
-          .foregroundStyle(.secondary)
-      }
-      if !item.sourceURL.trimmed.isEmpty {
-        Text(item.sourceURL)
-          .font(.caption.monospaced())
-          .foregroundStyle(AppTheme.accent)
-          .textSelection(.enabled)
-      }
-    }
-    .padding(.vertical, 8)
-    .frame(maxWidth: .infinity, alignment: .leading)
-  }
-
-  private func labeledBlock(_ label: String, _ value: String) -> some View {
-    Text("\(label): \(value)")
-      .font(.caption)
-      .foregroundStyle(.secondary)
-      .fixedSize(horizontal: false, vertical: true)
-  }
-}
-
-private struct ExperienceEditorForm: View {
-  @EnvironmentObject private var store: JobmaxxingStore
-  @State private var title = ""
-  @State private var organization = ""
-  @State private var location = ""
-  @State private var period = ""
-  @State private var summary = ""
-  @State private var bullets = ""
-  @State private var projectName = ""
-  @State private var projectSummary = ""
-  @State private var projectDetail = ""
-  @State private var projectSample = ""
-  @State private var projectTools = ""
-  @State private var projectMetrics = ""
-  @State private var projectTags = ""
-
-  var body: some View {
-    VStack(alignment: .leading, spacing: 8) {
-      HStack {
-        TextField("Role title", text: $title)
-        TextField("Organization / company", text: $organization)
-      }
-      HStack {
-        TextField("Location", text: $location)
-        TextField("Period", text: $period)
-      }
-      improveableField("role overview", text: $summary, context: experienceContext) {
-        TextField("Broad overview of this role", text: $summary, axis: .vertical)
-          .lineLimit(2...4)
-      }
-      improveableField("cv bullets", text: $bullets, context: experienceContext) {
-        TextField("CV bullets, comma-separated", text: $bullets, axis: .vertical)
-          .lineLimit(2...3)
-      }
-      Text("Optional project under this role")
-        .font(.caption.weight(.semibold))
-        .foregroundStyle(.secondary)
-      TextField("Project name", text: $projectName)
-      improveableField("project summary", text: $projectSummary, context: experienceContext) {
-        TextField("Project summary (CV-level)", text: $projectSummary, axis: .vertical)
-          .lineLimit(2...3)
-      }
-      improveableField("project detail", text: $projectDetail, context: experienceContext) {
-        TextField("Project detail (full writeup)", text: $projectDetail, axis: .vertical)
-          .lineLimit(3...6)
-      }
-      improveableField("project sample", text: $projectSample, context: experienceContext) {
-        TextField("Specific sample (one concrete walkthrough)", text: $projectSample, axis: .vertical)
-          .lineLimit(2...4)
-      }
-      HStack {
-        TextField("Tools", text: $projectTools)
-        TextField("Metrics", text: $projectMetrics)
-        TextField("Tags", text: $projectTags)
-      }
-      Button {
-        saveExperience()
-      } label: {
-        Label("Save experience writeup", systemImage: "plus")
-      }
-      .buttonStyle(.borderedProminent)
-      .disabled(title.trimmed.isEmpty || organization.trimmed.isEmpty)
-    }
-  }
-
-  private var experienceContext: String {
-    [
-      "Role: \(title)",
-      "Organization: \(organization)",
-      "Location: \(location)",
-      "Period: \(period)",
-      "Summary: \(summary)",
-      "Project: \(projectName)",
-      "Project summary: \(projectSummary)"
-    ].joined(separator: "\n")
-  }
-
-  @ViewBuilder
-  private func improveableField<Content: View>(
-    _ kind: String,
-    text: Binding<String>,
-    context: String,
-    @ViewBuilder content: () -> Content
-  ) -> some View {
-    VStack(alignment: .leading, spacing: 4) {
-      HStack {
-        Spacer()
-        ImproveTextControl(
-          currentText: text.wrappedValue,
-          context: context,
-          kind: kind,
-          onApply: { text.wrappedValue = $0 }
-        )
-      }
-      content()
-    }
-  }
-
-  private func saveExperience() {
-    var profile = store.state.profile
-    var experience = profile.experience ?? store.profileExperience
-    let splitList: (String) -> [String] = { value in
-      value
-        .split(whereSeparator: { $0 == "," || $0.isNewline })
-        .map { String($0).trimmed }
-        .filter { !$0.isEmpty }
-    }
-    let project: ProfileExperienceProject? = {
-      guard !projectName.trimmed.isEmpty else { return nil }
-      return ProfileExperienceProject(
-        id: "proj-\(UUID().uuidString.lowercased())",
-        name: projectName.trimmed,
-        summary: projectSummary.trimmed,
-        detail: projectDetail.trimmed,
-        specificSample: projectSample.trimmed,
-        tools: splitList(projectTools),
-        metrics: splitList(projectMetrics),
-        tags: splitList(projectTags),
-        sourceURL: ""
-      )
-    }()
-    if let index = experience.firstIndex(where: {
-      $0.organization.caseInsensitiveCompare(organization.trimmed) == .orderedSame &&
-        $0.title.caseInsensitiveCompare(title.trimmed) == .orderedSame
-    }) {
-      var current = experience[index]
-      if !location.trimmed.isEmpty { current.location = location.trimmed }
-      if !period.trimmed.isEmpty { current.period = period.trimmed }
-      if !summary.trimmed.isEmpty { current.summary = summary.trimmed }
-      let nextBullets = splitList(bullets)
-      if !nextBullets.isEmpty { current.bullets = nextBullets }
-      if let project {
-        current.projects = [project] + (current.projects ?? [])
-      }
-      experience[index] = current
-    } else {
-      experience.insert(
-        ProfileExperience(
-          id: "exp-\(UUID().uuidString.lowercased())",
-          title: title.trimmed,
-          organization: organization.trimmed,
-          location: location.trimmed,
-          period: period.trimmed,
-          summary: summary.trimmed,
-          bullets: splitList(bullets),
-          sourceURL: "",
-          projects: project.map { [$0] }
-        ),
-        at: 0
-      )
-    }
-    profile.experience = experience
-    store.updateProfile(profile)
-    title = ""
-    organization = ""
-    location = ""
-    period = ""
-    summary = ""
-    bullets = ""
-    projectName = ""
-    projectSummary = ""
-    projectDetail = ""
-    projectSample = ""
-    projectTools = ""
-    projectMetrics = ""
-    projectTags = ""
-  }
-}
-
-private struct ProjectRow: View {
-  let project: ProfileProject
-
-  var body: some View {
-    VStack(alignment: .leading, spacing: 6) {
-      HStack(alignment: .firstTextBaseline) {
-        Text(project.name)
-          .font(.headline)
-        Spacer()
-        Text(project.url)
-          .font(.caption.monospaced())
-          .foregroundStyle(AppTheme.accent)
-          .textSelection(.enabled)
-      }
-      Text(project.summary)
-        .font(.subheadline)
-        .foregroundStyle(.secondary)
-        .fixedSize(horizontal: false, vertical: true)
-      SettingsFlowTags(values: project.tags)
-    }
-    .padding(.vertical, 8)
-    .frame(maxWidth: .infinity, alignment: .leading)
-  }
-}
-
-private struct ProfileMemoryRow: View {
-  let memory: ProfileMemory
-
-  var body: some View {
-    HStack(alignment: .top, spacing: 10) {
-      Text(memory.kind)
-        .font(.caption.weight(.bold))
-        .padding(.horizontal, 7)
-        .padding(.vertical, 4)
-        .background(.quaternary)
-        .clipShape(RoundedRectangle(cornerRadius: 4))
-      VStack(alignment: .leading, spacing: 4) {
-        HStack {
-          Text(memory.title)
-            .font(.headline)
-          Spacer()
-          Text("S\(memory.strength)")
-            .font(.caption.monospaced().weight(.bold))
-            .foregroundStyle(.secondary)
-        }
-        Text(memory.detail)
-          .font(.subheadline)
-          .foregroundStyle(.secondary)
-          .fixedSize(horizontal: false, vertical: true)
-        Text(memory.source)
-          .font(.caption)
-          .foregroundStyle(.secondary)
-      }
-    }
-    .padding(.vertical, 8)
-    .frame(maxWidth: .infinity, alignment: .leading)
   }
 }

@@ -66,14 +66,14 @@ final class HermesChatFormattingTests: XCTestCase {
   }
 
   func testUnknownSlashCommandPassesThroughForDynamicHermesSkills() {
-    XCTAssertEqual(HermesNativeCommandCatalog.commandID(from: "/jobmaxxing-orchestrator review Example Company"), "jobmaxxing-orchestrator")
+    XCTAssertEqual(HermesNativeCommandCatalog.commandID(from: "/jobmaxxing-orchestrator review Example Systems"), "jobmaxxing-orchestrator")
     XCTAssertEqual(
       HermesNativeCommandCatalog.commandText(
         commandID: "jobmaxxing-orchestrator",
-        rawText: "/jobmaxxing-orchestrator review Example Company",
-        visibleText: "/jobmaxxing-orchestrator review Example Company"
+        rawText: "/jobmaxxing-orchestrator review Example Systems",
+        visibleText: "/jobmaxxing-orchestrator review Example Systems"
       ),
-      "/jobmaxxing-orchestrator review Example Company"
+      "/jobmaxxing-orchestrator review Example Systems"
     )
   }
 
@@ -243,7 +243,7 @@ final class HermesChatFormattingTests: XCTestCase {
       hermesMessage(
         id: "update-assistant",
         role: "assistant",
-        text: "Checking Hermes checkout state: ~/Desktop/hermes-desktop-agent",
+        text: "Checking Hermes checkout state: local Hermes checkout",
         commandID: "update",
         traces: [
           HermesTraceStep(
@@ -255,18 +255,18 @@ final class HermesChatFormattingTests: XCTestCase {
           )
         ]
       ),
-      hermesMessage(id: "example-company-user", role: "user", text: "I interviewed at Example Company with Example Contact."),
+      hermesMessage(id: "example-user", role: "user", text: "I interviewed at Example Systems with a contact."),
       hermesMessage(
-        id: "example-company-assistant",
+        id: "example-assistant",
         role: "assistant",
-        text: "Done. I saved the debrief into ~/Desktop/Jobmaxxing/data/jobmaxxing.json."
+        text: "Done. I saved the debrief into data/jobmaxxing.json."
       ),
       hermesMessage(id: "status-user", role: "user", text: "Status", commandID: "status")
     ]
 
     let sections = HermesTranscriptPresentation.sections(for: messages)
 
-    XCTAssertEqual(sections.visibleMessages.map(\.id), ["example-company-user", "example-company-assistant"])
+    XCTAssertEqual(sections.visibleMessages.map(\.id), ["example-user", "example-assistant"])
     XCTAssertEqual(sections.diagnosticMessages.map(\.id), ["update-user", "update-assistant", "status-user"])
     XCTAssertEqual(
       HermesTranscriptPresentation.latestSummary(from: sections.latestUsefulAssistant),
@@ -275,7 +275,7 @@ final class HermesChatFormattingTests: XCTestCase {
   }
 
   func testTranscriptPresentationCollapsesLongUserDictation() {
-    let longText = String(repeating: "Example Company interview detail. ", count: 80)
+    let longText = String(repeating: "Example Systems interview detail. ", count: 80)
     let message = hermesMessage(id: "long-user", role: "user", text: longText)
 
     XCTAssertTrue(
@@ -300,18 +300,18 @@ final class HermesChatFormattingTests: XCTestCase {
       id: "assistant",
       role: "assistant",
       text: """
-      Done. I saved the Example Company debrief into ~/Desktop/Jobmaxxing/data/jobmaxxing.json.
+      Done. I saved the Example Systems debrief into data/jobmaxxing.json.
       Verification:
-      - Ran npm run test; one unrelated failure from ~/.hermes/Hermes Agent.
+      - Ran npm run test; one unrelated failure from the local Hermes install.
       """
     )
 
     XCTAssertEqual(
       HermesTranscriptPresentation.displayText(for: message, showsDiagnosticContent: false),
-      "Done. I saved the Example Company debrief into the local Jobmaxxing data file."
+      "Done. I saved the Example Systems debrief into the local Jobmaxxing data file."
     )
     XCTAssertTrue(HermesTranscriptPresentation.hiddenDefaultDetails(for: message)?.contains("npm run test") ?? false)
-    XCTAssertTrue(HermesTranscriptPresentation.hiddenDefaultDetails(for: message)?.contains("~/.hermes") ?? false)
+    XCTAssertTrue(HermesTranscriptPresentation.hiddenDefaultDetails(for: message)?.contains("local Hermes install") ?? false)
   }
 
   private func hermesMessage(

@@ -5,7 +5,6 @@ struct SetupSettingsPage: View {
   let openConnections: () -> Void
   let openModels: () -> Void
   let openRuntime: () -> Void
-  let openProfile: () -> Void
 
   var body: some View {
     VStack(alignment: .leading, spacing: 0) {
@@ -46,11 +45,7 @@ struct SetupSettingsPage: View {
         number: "4",
         title: "Create your profile"
       ) {
-        HStack(alignment: .firstTextBaseline, spacing: 5) {
-          Text("Open")
-          SetupActionButton(title: "Profile", systemImage: "person.text.rectangle", action: openProfile)
-          Text("and write one brief about your experience, target roles, constraints, and proof. Jobmaxxing uses it to keep writing and research specific to you.")
-        }
+        Text("Return to the main window and open Profile below Dashboard. Add your work, concrete examples, and what you want next; Jobmaxxing will keep the story separate from setup and provider settings.")
       }
     }
     .frame(maxWidth: 880, alignment: .topLeading)

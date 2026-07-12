@@ -3,15 +3,14 @@ import SwiftUI
 @testable import Jobmaxxing
 
 final class SidebarDisplayTests: XCTestCase {
-  func testSidebarUsesTrimmedProfileName() {
-    XCTAssertEqual(SidebarDisplayName.userName(from: "  Example User  "), "Example User")
-  }
-
-  func testSidebarFallsBackToFullUserName() {
-    XCTAssertEqual(SidebarDisplayName.userName(from: " \n "), "Example User")
+  func testProfileSitsBetweenDashboardAndChat() {
+    XCTAssertEqual(Array(AppSection.primarySections.prefix(3)), [.dashboard, .profile, .chat])
   }
 
   func testSidebarKeyboardMovesBetweenAdjacentWorkflows() {
+    XCTAssertEqual(SidebarKeyboardNavigation.destination(from: .dashboard, moving: .down), .profile)
+    XCTAssertEqual(SidebarKeyboardNavigation.destination(from: .profile, moving: .down), .chat)
+    XCTAssertEqual(SidebarKeyboardNavigation.destination(from: .chat, moving: .up), .profile)
     XCTAssertEqual(SidebarKeyboardNavigation.destination(from: .writing, moving: .down), .interviews)
     XCTAssertEqual(SidebarKeyboardNavigation.destination(from: .writing, moving: .up), .contacts)
   }

@@ -2,7 +2,7 @@
 
 This document splits the audit findings into focused repair threads. Each thread is small enough for one Codex thread to own, but broad enough to fix a real product problem instead of one symptom.
 
-Do not treat the proposed fixes as instructions to implement blindly. Each thread must read the named files, verify the failure, challenge the proposed approach, then ship the simplest fix that preserves the product goal: help the user get a job with truthful, high-signal, user-approved hiring work.
+Do not treat the proposed fixes as instructions to implement blindly. Each thread must read the named files, verify the failure, challenge the proposed approach, then ship the simplest fix that preserves the product goal: help users get a job with truthful, high-signal, user-approved hiring work.
 
 ## Operating Rules
 

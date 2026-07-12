@@ -532,7 +532,7 @@ struct DocumentProofPanel: View {
   private func suggestedTitle(for document: CandidateDocument) -> String {
     let base: String
     if document.kind.lowercased() == "pdf" && document.title.localizedCaseInsensitiveContains("cv") {
-      base = "Example User - CV"
+      base = "Resume"
     } else {
       base = cleanTitle(for: document)
     }

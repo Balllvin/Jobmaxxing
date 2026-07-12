@@ -11,18 +11,18 @@ final class ApplicationsViewHelperTests: XCTestCase {
   }
 
   func testApplicationSourceLabelRejectsUnsafeSchemes() {
-    XCTAssertEqual(applicationSourceLabel(for: "file://~/private.pdf"), "Invalid job post")
+    XCTAssertEqual(applicationSourceLabel(for: "file:///private.pdf"), "Invalid job post")
     XCTAssertEqual(applicationSourceLabel(for: ""), "No job post")
   }
 
   func testLinkedInPeopleSearchKeepsCompanyAndRoleInQuery() throws {
-    let rawURL = linkedInPeopleSearch(company: "Example Company", role: "Supply Chain Analyst")
+    let rawURL = linkedInPeopleSearch(company: "Example Systems", role: "Supply Chain Analyst")
     let components = try XCTUnwrap(URLComponents(string: rawURL))
     let keywords = try XCTUnwrap(components.queryItems?.first(where: { $0.name == "keywords" })?.value)
 
     XCTAssertEqual(components.scheme, "https")
     XCTAssertEqual(components.host, "www.linkedin.com")
-    XCTAssertTrue(keywords.contains("Example Company"))
+    XCTAssertTrue(keywords.contains("Example Systems"))
     XCTAssertTrue(keywords.contains("Supply Chain Analyst"))
   }
 
@@ -35,7 +35,7 @@ final class ApplicationsViewHelperTests: XCTestCase {
   }
 
   func testApplicationToDoItemsMergeRisksBeforeNextActions() {
-    var record = job(company: "Lakera", role: "Software Engineer")
+    var record = job(company: "Example Systems", role: "Software Engineer")
     record.risks = ["AI security domain depth may be a gap"]
     record.nextActions = ["Review application pack.", "Verify posting in browser."]
 
@@ -50,7 +50,7 @@ final class ApplicationsViewHelperTests: XCTestCase {
   }
 
   func testApplicationToDoItemsDeduplicateCaseInsensitiveItems() {
-    var record = job(company: "Lakera", role: "Software Engineer")
+    var record = job(company: "Example Systems", role: "Software Engineer")
     record.risks = ["Verify posting in browser."]
     record.nextActions = ["before submitting: verify posting in browser."]
 
@@ -59,21 +59,21 @@ final class ApplicationsViewHelperTests: XCTestCase {
 
   func testProofMetadataParsesOneGuidedFieldIntoTitleAndTags() {
     let document = document(title: "Operations case study")
-    let job = job(company: "Example Company", role: "Supply Chain Analyst")
+    let job = job(company: "Example Systems", role: "Supply Chain Analyst")
     let metadata = "Supplier resilience story # manufacturing, interview"
 
     XCTAssertEqual(proofTitle(from: metadata, document: document), "Supplier resilience story")
     XCTAssertEqual(
       proofTags(from: metadata, job: job),
-      "proof, application, Example Company, Supply Chain Analyst, manufacturing, interview"
+      "proof, application, Example Systems, Supply Chain Analyst, manufacturing, interview"
     )
   }
 
   func testDefaultProofMetadataKeepsGeneratedTitleAndContextTags() {
     let document = document(title: "CV proof")
-    let job = job(company: "Example Company", role: "Planning Manager")
+    let job = job(company: "Example Systems", role: "Planning Manager")
 
-    XCTAssertEqual(defaultProofMetadata(document: document, job: job), "CV proof # proof, application, Example Company, Planning Manager")
+    XCTAssertEqual(defaultProofMetadata(document: document, job: job), "CV proof # proof, application, Example Systems, Planning Manager")
   }
 
   private func document(title: String) -> CandidateDocument {

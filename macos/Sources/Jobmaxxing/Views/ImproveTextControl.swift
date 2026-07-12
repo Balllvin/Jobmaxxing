@@ -17,6 +17,7 @@ struct ImproveTextControl: View {
   @State private var isRewriting = false
   @State private var editorHeight: CGFloat = 72
   @State private var latestSourceText = ""
+  @State private var latestContext = ""
   @State private var sourceRevision = 0
   @State private var rewriteTask: Task<Void, Never>?
 
@@ -41,12 +42,20 @@ struct ImproveTextControl: View {
     }
     .onAppear {
       latestSourceText = currentText
+      latestContext = context
     }
     .onChange(of: currentText) { _, nextText in
       latestSourceText = nextText
       sourceRevision += 1
       if isRewriting {
         cancelRewrite(status: "Source text changed. Review it before rewriting again.")
+      }
+    }
+    .onChange(of: context) { _, nextContext in
+      latestContext = nextContext
+      sourceRevision += 1
+      if isRewriting {
+        cancelRewrite(status: "Profile details changed. Review them before rewriting again.")
       }
     }
     .onChange(of: isOpen) { _, open in
@@ -159,6 +168,7 @@ struct ImproveTextControl: View {
     let userFeedback = feedback.trimmed
     guard !userFeedback.isEmpty else { return }
     let sourceText = latestSourceText.isEmpty ? currentText : latestSourceText
+    let sourceContext = latestContext.isEmpty ? context : latestContext
     let revision = sourceRevision
     rewriteTask?.cancel()
     isRewriting = true
@@ -167,14 +177,15 @@ struct ImproveTextControl: View {
       let result = await store.rewriteTextWithFeedback(
         currentText: sourceText,
         feedback: userFeedback,
-        context: context,
+        context: sourceContext,
         kind: kind
       )
       guard !Task.isCancelled else { return }
       await MainActor.run {
         guard !Task.isCancelled,
               sourceRevision == revision,
-              latestSourceText == sourceText else {
+              latestSourceText == sourceText,
+              latestContext == sourceContext else {
           isRewriting = false
           status = "Source text changed. The stale rewrite was not applied."
           rewriteTask = nil

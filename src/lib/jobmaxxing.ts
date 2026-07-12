@@ -433,7 +433,7 @@ export function formatExperienceForPrompt(profile: UserProfile): string {
 }
 
 export function normalizeUserFacingText(value: string): string {
-  return (value ?? "")
+  return value
     .replaceAll("&amp;", "&")
     .replace(/\bAIML\s*-\s*/g, "")
     .replace(/\bAIML\b/g, "AI and ML")
@@ -441,15 +441,6 @@ export function normalizeUserFacingText(value: string): string {
     .replace(/\bData\s*\/\s*ML\s*\/\s*AI Intern\b/g, "Data, ML, and AI Intern")
     .replace(/\bIntern Applied AI\s*&\s*AI-Platform\b/g, "Applied AI and AI Platform Intern")
     .replace(/\bApplied AI\s*&\s*AI-Platform Intern\b/g, "Applied AI and AI Platform Intern")
-    .replace(/Daten trifft auf Systeme: Trainee-Programm, 80-100%/g, "Data and Systems Trainee Program, 80-100%")
-    .replace(/\bContracted as working student\b/g, "Contracted as a working student (source role title: __SOURCE_ROLE__)")
-    .replace(/\bworking student\b/g, "Working Student")
-    .replace(/\bsource role title: Working Student\b/g, "source role title: __SOURCE_ROLE__")
-    .replaceAll("__SOURCE_ROLE__", "working student")
-    .replace(
-      /\bApple Mail contract evidence: Example User Vertrag\.pdf\b/g,
-      "Apple Mail contract evidence: Example User contract.pdf (original German filename: Example User Vertrag.pdf)"
-    )
     .replace(/\s+/g, " ")
     .trim();
 }
@@ -584,7 +575,7 @@ export function buildWritingPrompt(profile: UserProfile, draft = ""): string {
     "5. No company lecture, no posting paraphrase, no service pitch.",
     "",
     "Good example shape:",
-    "- I am interested in the Data, ML, and AI Intern role at Northstar Climate Bank.",
+    "- I am interested in the Product Engineer role at Northstar Labs.",
     "- Most of my recent work sits where market research meets software. That means cleaning messy information, building small tools that speed up analysis, and keeping the results clear enough that another person can check them.",
     "- For example, last summer during an investment internship, a lot of time went into the same news-and-notes grind: open several sources, copy pieces into a document, and try to compare what mattered. I built a process that pulled those inputs together, cleaned them, and turned them into a short structured summary someone could review before a research discussion. The point was not to replace judgment. The point was to stop redoing the same setup work every morning.",
     "- My CV is attached. I would look forward to hearing back from you and learning more about the role.",
@@ -695,6 +686,7 @@ export function analyzeWhatsAppThread(input: {
   companyName: string;
   personName: string;
   purpose?: string;
+  senderName?: string;
 }): WhatsAppThreadProfile {
   const messages = input.messages.filter((message) => message.text.trim().length > 0);
   const outgoing = messages.filter((message) => message.fromMe);
@@ -719,8 +711,8 @@ export function analyzeWhatsAppThread(input: {
     "",
     "Would you be open to pointing me toward the right person or sharing what I should understand first?",
     "",
-    "Best,",
-    "User"
+    "Kind regards,",
+    ...(input.senderName?.trim() ? [input.senderName.trim()] : [])
   ].join("\n");
 
   return {

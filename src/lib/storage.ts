@@ -299,10 +299,38 @@ function normalizeStore(store: JobmaxxingStore): JobmaxxingStore {
   const profile = normalizeProfileForDisplay({
     ...defaultStore.profile,
     ...store.profile,
+    name: typeof store.profile.name === "string" ? store.profile.name : defaultStore.profile.name,
+    targetRoles: Array.isArray(store.profile.targetRoles) ? store.profile.targetRoles : defaultStore.profile.targetRoles,
+    locations: Array.isArray(store.profile.locations) ? store.profile.locations : defaultStore.profile.locations,
+    compensationGoal:
+      typeof store.profile.compensationGoal === "string"
+        ? store.profile.compensationGoal
+        : defaultStore.profile.compensationGoal,
+    workAuthorization:
+      typeof store.profile.workAuthorization === "string"
+        ? store.profile.workAuthorization
+        : defaultStore.profile.workAuthorization,
+    strengths: Array.isArray(store.profile.strengths) ? store.profile.strengths : defaultStore.profile.strengths,
     experience: Array.isArray(store.profile.experience) ? store.profile.experience : defaultStore.profile.experience,
-    writingRules: store.profile.writingRules?.length ? store.profile.writingRules : defaultStore.profile.writingRules,
-    modelTiers: store.profile.modelTiers?.length ? store.profile.modelTiers : defaultStore.profile.modelTiers,
-    preferredModelTier: store.profile.preferredModelTier || defaultStore.profile.preferredModelTier,
+    dealBreakers: Array.isArray(store.profile.dealBreakers)
+      ? store.profile.dealBreakers
+      : defaultStore.profile.dealBreakers,
+    styleGuide: Array.isArray(store.profile.styleGuide) ? store.profile.styleGuide : defaultStore.profile.styleGuide,
+    writingRules:
+      Array.isArray(store.profile.writingRules) && store.profile.writingRules.length > 0
+        ? store.profile.writingRules
+        : defaultStore.profile.writingRules,
+    modelTiers:
+      Array.isArray(store.profile.modelTiers) && store.profile.modelTiers.length > 0
+        ? store.profile.modelTiers
+        : defaultStore.profile.modelTiers,
+    preferredModelTier:
+      typeof store.profile.preferredModelTier === "string" && store.profile.preferredModelTier
+        ? store.profile.preferredModelTier
+        : defaultStore.profile.preferredModelTier,
+    promptMemory: Array.isArray(store.profile.promptMemory)
+      ? store.profile.promptMemory
+      : defaultStore.profile.promptMemory,
     permissions: {
       ...defaultStore.profile.permissions,
       ...store.profile.permissions
@@ -527,89 +555,61 @@ function normalizeDraftBodyText(value: string): string {
 }
 
 function isSourceLanguageArtifact(value: string): boolean {
-  return /\b(Sehr geehrte|Ich bewerbe mich|Finanzthemen|Schweizerdeutsch|Warum Example)\b/i.test(value);
+  return /\b(Sehr geehrte|Ich bewerbe mich|Finanzthemen|Schweizerdeutsch)\b/i.test(value);
 }
 
 function normalizeProfileForDisplay(profile: UserProfile): UserProfile {
   return {
     ...profile,
-    targetRoles: profile.targetRoles.map(normalizeUserFacingText),
     strengths: profile.strengths.map((fact) => ({
       ...fact,
-      label: normalizeUserFacingText(fact.label),
-      proof: normalizeUserFacingText(fact.proof),
-      tags: fact.tags.map(normalizeUserFacingText)
+      tags: Array.isArray(fact.tags) ? fact.tags : []
     })),
     experience: (profile.experience ?? []).map((entry) => ({
       ...entry,
-      title: normalizeUserFacingText(entry.title),
-      organization: normalizeUserFacingText(entry.organization),
-      location: normalizeUserFacingText(entry.location),
-      period: normalizeUserFacingText(entry.period),
-      summary: normalizeUserFacingText(entry.summary),
-      bullets: entry.bullets.map(normalizeUserFacingText),
+      bullets: Array.isArray(entry.bullets) ? entry.bullets : [],
       sourceUrl: entry.sourceUrl ?? "",
-      projects: (entry.projects ?? []).map((project) => ({
+      projects: (Array.isArray(entry.projects) ? entry.projects : []).map((project) => ({
         ...project,
-        name: normalizeUserFacingText(project.name),
-        summary: normalizeUserFacingText(project.summary),
-        detail: normalizeUserFacingText(project.detail),
-        specificSample: normalizeUserFacingText(project.specificSample),
-        tools: project.tools.map(normalizeUserFacingText),
-        metrics: project.metrics.map(normalizeUserFacingText),
-        tags: project.tags.map(normalizeUserFacingText),
+        tools: Array.isArray(project.tools) ? project.tools : [],
+        metrics: Array.isArray(project.metrics) ? project.metrics : [],
+        tags: Array.isArray(project.tags) ? project.tags : [],
         sourceUrl: project.sourceUrl ?? ""
       }))
-    })),
-    promptMemory: profile.promptMemory.map(normalizeUserFacingText)
+    }))
   };
 }
 
 function normalizeCompanyForDisplay(company: CompanyProfile): CompanyProfile {
-  const research = company.research ?? {
-    status: "Not researched",
-    confidence: 0,
-    websitePages: [],
-    products: [],
-    businessModel: "",
-    leadership: [],
-    hiringSignals: [],
-    risks: [],
-    openQuestions: [],
-    sourceUrls: [],
-    agentPlan: []
-  };
   return {
     ...company,
     summary: normalizeUserFacingText(company.summary),
-    submittedMaterials: (company.submittedMaterials ?? []).map((material) => ({
+    submittedMaterials: company.submittedMaterials.map((material) => ({
       ...material,
       title: normalizeUserFacingText(material.title),
       summary: normalizeUserFacingText(material.summary)
     })),
-    people: (company.people ?? []).map((person) => ({
+    people: company.people.map((person) => ({
       ...person,
       name: normalizeUserFacingText(person.name),
       title: normalizeUserFacingText(person.title),
       notes: normalizeUserFacingText(person.notes)
     })),
     research: {
-      ...research,
-      websitePages: research.websitePages.map((page) => ({
+      ...company.research,
+      websitePages: company.research.websitePages.map((page) => ({
         ...page,
         title: normalizeUserFacingText(page.title),
         summary: normalizeUserFacingText(page.summary)
       })),
-      hiringSignals: research.hiringSignals.map(normalizeUserFacingText)
+      hiringSignals: company.research.hiringSignals.map(normalizeUserFacingText)
     }
   };
 }
 
 function normalizeContactForDisplay(contact: ContactRecord): ContactRecord {
-  const name = normalizedContactName(contact);
   return {
     ...contact,
-    name,
     role: normalizeUserFacingText(contact.role),
     jobDescription: normalizeUserFacingText(contact.jobDescription),
     notes: normalizeUserFacingText(contact.notes),
@@ -626,10 +626,6 @@ function normalizeContactForDisplay(contact: ContactRecord): ContactRecord {
       proposedAdditions: contact.research.proposedAdditions.map(normalizeUserFacingText)
     }
   };
-}
-
-function normalizedContactName(contact: ContactRecord): string {
-  return normalizeUserFacingText(contact.name);
 }
 
 function safeStoredExternalUrl(value: string): string {

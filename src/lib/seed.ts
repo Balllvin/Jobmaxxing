@@ -6,80 +6,15 @@ export const defaultStore: JobmaxxingStore = {
   revision: 1,
   currentGoal: undefined,
   profile: {
-    name: "Local Candidate",
-    targetRoles: ["AI product engineer", "founding engineer", "automation engineer"],
-    locations: ["remote", "Zurich", "London", "New York"],
-    compensationGoal: "High-upside role with strong base, equity, or clear contracting budget.",
-    workAuthorization: "User should confirm eligibility per role before applying.",
-    strengths: [
-      {
-        id: "fact-agent-systems",
-        label: "Built agent workflows",
-        proof:
-          "Designed multi-step agent workflows with browser use, local data, review loops, and explicit safety gates.",
-        tags: ["agents", "automation", "workflow", "browser", "review"]
-      },
-      {
-        id: "fact-product-speed",
-        label: "Ships product quickly",
-        proof:
-          "Turns vague product goals into working local apps with tests, documentation, and a clear user workflow.",
-        tags: ["product", "frontend", "typescript", "testing", "documentation"]
-      },
-      {
-        id: "fact-finance-domain",
-        label: "Understands finance and operations",
-        proof:
-          "Has worked with financial workflows, local ledgers, account data, and decision dashboards.",
-        tags: ["finance", "operations", "data", "dashboard"]
-      }
-    ],
-    experience: [
-      {
-        id: "exp-agent-product-work",
-        title: "Builder",
-        organization: "Independent projects",
-        location: "Remote",
-        period: "Recent work",
-        summary:
-          "Built agent systems, local products, and finance-facing tools with review gates and clear proof.",
-        bullets: [
-          "Designed multi-step agent workflows with browser use, local data, and safety gates.",
-          "Shipped local apps with tests and documentation.",
-          "Worked with financial workflows, ledgers, and decision dashboards."
-        ],
-        projects: [
-          {
-            id: "proj-agent-workflows",
-            name: "Agent workflow systems",
-            summary: "Multi-step agent workflows with review loops.",
-            detail:
-              "Designed agent workflows that combine browser use, local data, review loops, and explicit safety gates before external actions. Focus stayed on inspectable steps rather than black-box automation.",
-            specificSample:
-              "One system routes a task through research, local evidence lookup, draft generation, and a human approval gate before any external send or submit.",
-            tools: ["TypeScript", "agents", "browser tools"],
-            metrics: [],
-            tags: ["agents", "automation", "review"],
-            sourceUrl: ""
-          }
-        ],
-        sourceUrl: ""
-      }
-    ],
-    dealBreakers: ["Unclear ownership", "No room to automate", "Heavy meeting culture"],
-    styleGuide: [
-      "Write like a competent operator, not a generic applicant.",
-      "Answer interest and capability. Broad themes first, then one specific sample.",
-      "Open with 'I am interested in the [role] role at [company].'",
-      "Vary sentence openings. Do not stack many sentences starting with I.",
-      "Sound humble and capable. Prefer concrete past work over self-praise or service pitches.",
-      "Do not restate the company, paraphrase the posting, or offer to start on their tasks.",
-      "Write for HR first: plain English, no insider finance shorthand unless explained.",
-      "Broad themes first, then 'For example,' and dig into one specific piece of work.",
-      "Do not repeat the same phrase in the broad block and the example.",
-      "Close in full sentences: My CV is attached. I would look forward to hearing back from you and learning more about the role.",
-      "Avoid inflated claims that are not backed by saved evidence."
-    ],
+    name: "",
+    targetRoles: [],
+    locations: [],
+    compensationGoal: "",
+    workAuthorization: "",
+    strengths: [],
+    experience: [],
+    dealBreakers: [],
+    styleGuide: [],
     writingRules: [
       {
         id: "amazon-short-sentences",
@@ -199,26 +134,17 @@ export const defaultStore: JobmaxxingStore = {
       }
     ],
     preferredModelTier: "standard-writing",
-    promptMemory: [
-      "Outreach shape: interest + plain broad work + 'For example,' dug-in sample + full-sentence close.",
-      "Open with 'I am interested in the [role] role'. Do not lead with 'I am applying for'.",
-      "Write for HR first. Explain finance work in plain English. No long/short jargon without explanation.",
-      "Use deep experience/project writeups for samples. Dig into one part. Do not repeat broad phrases in the sample.",
-      "Vary sentence openings. Avoid I-I-I stacks.",
-      "Close: My CV is attached. I would look forward to hearing back from you and learning more about the role.",
-      "No 'role maps to', no posting paraphrase, no company lecture, no service pitch.",
-      "Prioritize roles where agents, automation, product speed, or finance workflows matter."
-    ],
+    promptMemory: [],
     permissions: {
       browser: "manual_only",
       allowLinkedInAutomation: false,
       allowExternalSubmission: false,
       telegramWebhookUrl: "",
-      hermesAgentPath: "~/.hermes/hermes-agent"
+      hermesAgentPath: ""
     }
   },
   hermes: {
-    agentPath: "~/.hermes/hermes-agent",
+    agentPath: "",
     layerPath: "~/.jobmaxxing/hermes-layer",
     defaultModelTier: "final-review",
     updateCommand: "scripts/hermes_update.sh",
