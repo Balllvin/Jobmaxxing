@@ -138,7 +138,7 @@ final class NativeStorageIntegrityTests: XCTestCase {
         period: "Three years",
         summary: "Worked beside operators.\n\nTurned repeated handoffs into one reviewable workflow.",
         bullets: ["Reduced duplicate handoffs.", "Kept final approval with the operator."],
-        sourceURL: "file:///private/profile/employment-record.pdf",
+        sourceURL: "file:///fixture/profile/employment-record.pdf",
         projects: [
           ProfileExperienceProject(
             id: "experience-project-one",
@@ -149,7 +149,7 @@ final class NativeStorageIntegrityTests: XCTestCase {
             tools: ["Swift", "SQLite"],
             metrics: ["Three handoffs became one review"],
             tags: ["operations"],
-            sourceURL: "file:///private/profile/project-notes.md"
+            sourceURL: "file:///fixture/profile/project-notes.md"
           )
         ]
       )
@@ -159,7 +159,7 @@ final class NativeStorageIntegrityTests: XCTestCase {
         id: "evidence-one",
         title: "Planning outcome",
         proof: "A weekly reconciliation went from a full afternoon to one review pass.\n\nThe operator kept final approval.",
-        sourceURL: "file:///private/profile/outcome-note.md",
+        sourceURL: "file:///fixture/profile/outcome-note.md",
         tags: ["workflow"],
         strength: 5
       )

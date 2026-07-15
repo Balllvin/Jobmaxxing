@@ -7,13 +7,13 @@ final class ProfileScopedEditSupportTests: XCTestCase {
     latest.name = "Original name"
     latest.headline = "Original headline"
     latest.about = "Original story"
-    latest.experience = [experience(id: "role", title: "Original role", source: "file:///private/role.txt")]
+    latest.experience = [experience(id: "role", title: "Original role", source: "file:///fixture/role.txt")]
     latest.evidence = [
       EvidenceItem(
         id: "proof",
         title: "Original label",
         proof: "Original proof with  exact spacing.",
-        sourceURL: "file:///private/proof.txt",
+        sourceURL: "file:///fixture/proof.txt",
         tags: ["original"],
         strength: 4
       )
@@ -56,11 +56,11 @@ final class ProfileScopedEditSupportTests: XCTestCase {
   func testExperienceEditReplacesOnlyMatchingStableIDAndKeepsHiddenSources() throws {
     var latest = JobmaxxingStore.defaultState.profile
     latest.experience = [
-      experience(id: "first", title: "First role", source: "file:///private/first.txt"),
+      experience(id: "first", title: "First role", source: "file:///fixture/first.txt"),
       experience(
         id: "target",
         title: "Old role",
-        source: "file:///private/target.txt",
+        source: "file:///fixture/target.txt",
         project: ProfileExperienceProject(
           id: "nested",
           name: "Old project",
@@ -70,7 +70,7 @@ final class ProfileScopedEditSupportTests: XCTestCase {
           tools: [],
           metrics: [],
           tags: [],
-          sourceURL: "file:///private/nested.txt"
+          sourceURL: "file:///fixture/nested.txt"
         )
       )
     ]
@@ -92,9 +92,9 @@ final class ProfileScopedEditSupportTests: XCTestCase {
     XCTAssertEqual(result.experience?[0], latest.experience?[0])
     XCTAssertEqual(result.experience?[1].title, "Updated role")
     XCTAssertEqual(result.experience?[1].summary, "Updated summary")
-    XCTAssertEqual(result.experience?[1].sourceURL, "file:///private/target.txt")
+    XCTAssertEqual(result.experience?[1].sourceURL, "file:///fixture/target.txt")
     XCTAssertEqual(result.experience?[1].projects?.first?.name, "Updated project")
-    XCTAssertEqual(result.experience?[1].projects?.first?.sourceURL, "file:///private/nested.txt")
+    XCTAssertEqual(result.experience?[1].projects?.first?.sourceURL, "file:///fixture/nested.txt")
   }
 
   func testWorkingStyleEditCleansVisibleMemoryAndPreservesHiddenMetadata() throws {
@@ -107,7 +107,7 @@ final class ProfileScopedEditSupportTests: XCTestCase {
         kind: "Private category",
         title: "Old title",
         detail: "Old detail",
-        source: "file:///private/context.txt",
+        source: "file:///fixture/context.txt",
         strength: 4
       )
     ]
@@ -137,7 +137,7 @@ final class ProfileScopedEditSupportTests: XCTestCase {
     XCTAssertEqual(memory.title, "New title")
     XCTAssertEqual(memory.detail, "First line.\n\nSecond line.")
     XCTAssertEqual(memory.kind, "Private category")
-    XCTAssertEqual(memory.source, "file:///private/context.txt")
+    XCTAssertEqual(memory.source, "file:///fixture/context.txt")
     XCTAssertEqual(memory.strength, 4)
     XCTAssertEqual(result.evidence, latest.evidence)
   }
@@ -157,7 +157,7 @@ final class ProfileScopedEditSupportTests: XCTestCase {
         id: "target",
         title: "Old label",
         proof: "Old proof.",
-        sourceURL: "file:///private/proof.txt",
+        sourceURL: "file:///fixture/proof.txt",
         tags: ["old"],
         strength: 5
       )
@@ -179,7 +179,7 @@ final class ProfileScopedEditSupportTests: XCTestCase {
     XCTAssertEqual(result.evidence[0], latest.evidence[0])
     XCTAssertEqual(result.evidence[1].title, "Updated label")
     XCTAssertEqual(result.evidence[1].proof, "Updated proof.")
-    XCTAssertEqual(result.evidence[1].sourceURL, "file:///private/proof.txt")
+    XCTAssertEqual(result.evidence[1].sourceURL, "file:///fixture/proof.txt")
     XCTAssertEqual(result.evidence[1].strength, 5)
 
     edited.evidence[1].sourceURL = "https://example.com/public-proof"

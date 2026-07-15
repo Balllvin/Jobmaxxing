@@ -101,7 +101,7 @@ final class ProfileStorySupportTests: XCTestCase {
         id: "source-only",
         title: "Internal record",
         proof: "",
-        sourceURL: "file:///private/profile/record.pdf",
+        sourceURL: "file:///fixture/profile/record.pdf",
         tags: [],
         strength: 3
       )
@@ -123,7 +123,7 @@ final class ProfileStorySupportTests: XCTestCase {
         period: "",
         summary: "",
         bullets: [],
-        sourceURL: "file:///private/profile/role.pdf",
+        sourceURL: "file:///fixture/profile/role.pdf",
         projects: [
           ProfileExperienceProject(
             id: "hidden-child",
@@ -134,7 +134,7 @@ final class ProfileStorySupportTests: XCTestCase {
             tools: [],
             metrics: [],
             tags: [],
-            sourceURL: "file:///private/profile/project.pdf"
+            sourceURL: "file:///fixture/profile/project.pdf"
           )
         ]
       )

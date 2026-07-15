@@ -15,6 +15,12 @@ fi
 
 if [[ -d .git ]]; then
   tracked_paths="$(git ls-files | grep -v '^scripts/check_clean_repo.sh$')"
+  candidate_paths="$(
+    {
+      printf '%s\n' "$tracked_paths"
+      git ls-files --others --exclude-standard
+    } | awk 'NF && !seen[$0]++'
+  )"
   for path in \
     "data/" \
     "output/" \
@@ -30,7 +36,7 @@ if [[ -d .git ]]; then
   scan_args=(--files-with-matches --hidden --glob '!scripts/check_clean_repo.sh')
   while IFS= read -r file; do
     scan_args+=("$file")
-  done <<<"$tracked_paths"
+  done <<<"$candidate_paths"
 else
   scan_args=(
     --files-with-matches
@@ -65,6 +71,7 @@ for pattern in \
   "Balllvin" \
   "/Users/alvin" \
   "/Users/Alvin" \
+  "file:///private" \
   "marauder-main.up.railway.app" \
   "smaug.up.railway.app" \
   "quant-lab-production.up.railway.app"; do

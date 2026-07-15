@@ -11,7 +11,7 @@ final class ApplicationsViewHelperTests: XCTestCase {
   }
 
   func testApplicationSourceLabelRejectsUnsafeSchemes() {
-    XCTAssertEqual(applicationSourceLabel(for: "file:///private.pdf"), "Invalid job post")
+    XCTAssertEqual(applicationSourceLabel(for: "file:///fixture.pdf"), "Invalid job post")
     XCTAssertEqual(applicationSourceLabel(for: ""), "No job post")
   }
 

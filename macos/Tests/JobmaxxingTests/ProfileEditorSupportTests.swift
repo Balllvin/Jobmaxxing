@@ -58,7 +58,7 @@ final class ProfileEditorSupportTests: XCTestCase {
       ProfileEducation(id: "notes-only", school: "", credential: "", period: "", notes: "  Coursework in systems design.  ")
     ]
     draft.evidence = [
-      EvidenceItem(id: "source-only", title: "", proof: "", sourceURL: "file:///private/proof.pdf", tags: [], strength: 3)
+      EvidenceItem(id: "source-only", title: "", proof: "", sourceURL: "file:///fixture/proof.pdf", tags: [], strength: 3)
     ]
 
     let prepared = ProfileEditorSupport.preparedForSave(draft)
@@ -73,7 +73,7 @@ final class ProfileEditorSupportTests: XCTestCase {
     XCTAssertEqual(prepared.experience?[1].bullets, ["Kept final approval with the user."])
     XCTAssertEqual(prepared.profileProjects?.first?.url, "https://example.com/work")
     XCTAssertEqual(prepared.education?.first?.notes, "Coursework in systems design.")
-    XCTAssertEqual(prepared.evidence.first?.sourceURL, "file:///private/proof.pdf")
+    XCTAssertEqual(prepared.evidence.first?.sourceURL, "file:///fixture/proof.pdf")
   }
 
   func testPreparedProfileRemovesOnlyCompletelyEmptyRows() {
