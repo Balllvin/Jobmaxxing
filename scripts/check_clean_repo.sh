@@ -60,6 +60,7 @@ for pattern in \
   "McKinsey" \
   "QuantumBlack" \
   "Dialectic" \
+  "Lakera" \
   "Rodolphe" \
   "Adil" \
   "Marauder" \
@@ -82,7 +83,7 @@ for pattern in \
 done
 
 if [[ -d .git ]]; then
-  if git log --all --format='%H %s' | rg -n -S "(Alvin|Stark|Medela|McKinsey|QuantumBlack|Dialectic|Rodolphe|Adil|Marauder|Smaug|PEKTOPROP|OPEKTUM|V-ZUG|Werkstudent|Balllvin|marauder-main|smaug\\.up|quant-lab-production)" >/tmp/jobmaxxing-clean-check-history 2>/dev/null; then
+  if git log --all --format='%H %s' | rg -n -S "(Alvin|Stark|Medela|McKinsey|QuantumBlack|Dialectic|Lakera|Rodolphe|Adil|Marauder|Smaug|PEKTOPROP|OPEKTUM|V-ZUG|Werkstudent|Balllvin|marauder-main|smaug\\.up|quant-lab-production)" >/tmp/jobmaxxing-clean-check-history 2>/dev/null; then
     cat /tmp/jobmaxxing-clean-check-history >&2
     fail "forbidden personal or private reference exists in Git history"
   fi

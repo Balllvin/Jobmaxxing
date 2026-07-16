@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct SidebarView: View {
+  @EnvironmentObject private var store: JobmaxxingStore
   @Binding var selection: AppSection
   @FocusState private var focusedSection: AppSection?
 
@@ -37,7 +38,10 @@ struct SidebarView: View {
       moveSelection(direction)
     }
     .safeAreaInset(edge: .bottom, spacing: 0) {
-      SidebarSettingsFooter(selection: $selection)
+      SidebarSettingsFooter(
+        selection: $selection,
+        profileName: ProfileStorySupport.displayName(for: store.state.profile)
+      )
     }
   }
 
@@ -69,6 +73,7 @@ enum SidebarKeyboardNavigation {
 
 private struct SidebarSettingsFooter: View {
   @Binding var selection: AppSection
+  let profileName: String
 
   var body: some View {
     VStack(spacing: 0) {
@@ -78,7 +83,7 @@ private struct SidebarSettingsFooter: View {
         selection = .settings
       } label: {
         HStack(spacing: 10) {
-          Text("Settings")
+          Text(profileName)
             .font(.system(size: 14, weight: .medium))
             .foregroundStyle(.secondary)
             .lineLimit(1)

@@ -6,14 +6,14 @@ final class TextImproveSupportTests: XCTestCase {
     let prompt = TextImproveSupport.rewritePrompt(
       currentText: "I am interested in the role.",
       feedback: "sound less robotic and more humble",
-      context: "Company: Lakera\nRole: Software Engineer",
+      context: "Company: Example Systems\nRole: Software Engineer",
       kind: "cover letter"
     )
 
     XCTAssertTrue(prompt.contains("USER FEEDBACK (highest priority"))
     XCTAssertTrue(prompt.contains("sound less robotic and more humble"))
     XCTAssertTrue(prompt.contains("I am interested in the role."))
-    XCTAssertTrue(prompt.contains("Company: Lakera"))
+    XCTAssertTrue(prompt.contains("Company: Example Systems"))
     XCTAssertTrue(prompt.contains("Prioritize the user's feedback"))
     XCTAssertTrue(prompt.contains("Return only the rewritten cover letter"))
     XCTAssertFalse(prompt.contains("first-person professional narrative"))

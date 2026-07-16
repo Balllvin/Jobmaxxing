@@ -19,14 +19,25 @@ struct DashboardView: View {
           interviews: interviewCount
         )
 
-        LazyVGrid(
-          columns: [GridItem(.adaptive(minimum: 320), spacing: 24, alignment: .top)],
-          alignment: .leading,
-          spacing: 20
-        ) {
-          applicationQueue
-          sideQueue
+        ViewThatFits(in: .horizontal) {
+          LazyVGrid(
+            columns: [
+              GridItem(.flexible(minimum: 320), spacing: 24, alignment: .top),
+              GridItem(.flexible(minimum: 320), alignment: .top)
+            ],
+            alignment: .leading,
+            spacing: 20
+          ) {
+            applicationQueue
+            sideQueue
+          }
+
+          VStack(alignment: .leading, spacing: 20) {
+            applicationQueue
+            sideQueue
+          }
         }
+        .frame(maxWidth: .infinity, alignment: .topLeading)
       }
       .padding(20)
       .frame(maxWidth: .infinity, alignment: .topLeading)

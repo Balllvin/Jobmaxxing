@@ -58,6 +58,17 @@ enum CodeHelpRouteAvailability: Equatable {
 enum CodeHelpAgentRunner {
   static let maximumReplyContextCharacters = 4_000
   static let maximumPreviousQuestionCharacters = 1_200
+  static let searchablePaths = [
+    "macos/Sources/Jobmaxxing",
+    "macos/Tests",
+    "macos/Package.swift",
+    "src",
+    "scripts",
+    "script",
+    "hermes",
+    "package.json",
+    "tsconfig.json"
+  ]
 
   static func respond(to request: CodeHelpAgentRequest) async -> CodeHelpAgentResult {
     guard let repoRoot = RepoRootResolver.find() else {
@@ -67,7 +78,7 @@ enum CodeHelpAgentRunner {
     do {
       let answer = try await callMediumRoute(
         route: request.route,
-        prompt: prompt(for: request, repoRootPath: repoRoot.path, search: search)
+        prompt: prompt(for: request, search: search)
       )
       return CodeHelpAgentResult(
         text: answer.trimmed.isEmpty ? "The Medium route returned an empty answer." : answer,
@@ -89,7 +100,7 @@ enum CodeHelpAgentRunner {
     }
   }
 
-  static func prompt(for request: CodeHelpAgentRequest, repoRootPath: String, search: CodeHelpSearchResult) -> String {
+  static func prompt(for request: CodeHelpAgentRequest, search: CodeHelpSearchResult) -> String {
     var parts = [
       """
       You are Code Help inside Jobmaxxing Settings.
@@ -99,7 +110,6 @@ enum CodeHelpAgentRunner {
       Cite local file paths or symbols when they matter.
       If the search results do not contain enough evidence, say what is missing and stop.
       Model route: \(request.route.label), \(request.route.provider), \(request.route.model), reasoning \(request.route.reasoningEffort ?? "default").
-      Repository: \(repoRootPath)
       """
     ]
     if let reply = request.replyContext {
@@ -138,21 +148,18 @@ enum CodeHelpAgentRunner {
       return CodeHelpSearchResult(summary: "No searchable terms in the question.", matchedFiles: [])
     }
     let pattern = terms.prefix(7).map(NSRegularExpression.escapedPattern(for:)).joined(separator: "|")
+    let searchPaths = searchablePaths.filter {
+      FileManager.default.fileExists(atPath: repoRoot.appendingPathComponent($0).path)
+    }
+    guard !searchPaths.isEmpty else {
+      return CodeHelpSearchResult(summary: "No searchable source paths found.", matchedFiles: [])
+    }
     let arguments = [
       "rg",
       "--line-number",
       "--ignore-case",
-      "--hidden",
-      "--glob", "!.git",
-      "--glob", "!node_modules",
-      "--glob", "!dist",
-      "--glob", "!macos/dist",
-      "--glob", "!data",
-      "--glob", "!output",
-      "--glob", "!package-lock.json",
-      pattern,
-      repoRoot.path
-    ]
+      pattern
+    ] + searchPaths
     let result = await runProcess(
       executableURL: URL(fileURLWithPath: "/usr/bin/env"),
       arguments: arguments,
@@ -168,9 +175,7 @@ enum CodeHelpAgentRunner {
     let summary = String(trimmedLines.joined(separator: "\n").prefix(18_000))
     let matchedFiles = Array(Set(trimmedLines.compactMap { line -> String? in
       guard let firstColon = line.firstIndex(of: ":") else { return nil }
-      return String(line[..<firstColon])
-        .replacingOccurrences(of: repoRoot.path + "/", with: "")
-        .trimmed
+      return String(line[..<firstColon]).trimmed
     })).sorted()
     return CodeHelpSearchResult(
       summary: summary.trimmed.isEmpty ? "No matching code lines found for: \(terms.joined(separator: ", "))." : summary,

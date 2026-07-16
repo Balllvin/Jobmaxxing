@@ -1,3 +1,4 @@
+import Foundation
 import XCTest
 @testable import Jobmaxxing
 
@@ -17,7 +18,6 @@ final class CodeHelpSettingsTests: XCTestCase {
 
     let prompt = CodeHelpAgentRunner.prompt(
       for: request,
-      repoRootPath: "/tmp/jobmaxxing",
       search: CodeHelpSearchResult(
         summary: "macos/Sources/Jobmaxxing/Views/SettingsView.swift:95: private struct SettingsSidebar: View",
         matchedFiles: ["macos/Sources/Jobmaxxing/Views/SettingsView.swift"]
@@ -30,6 +30,7 @@ final class CodeHelpSettingsTests: XCTestCase {
     XCTAssertTrue(prompt.contains("SettingsPage controls Settings navigation."))
     XCTAssertTrue(prompt.contains("SettingsSidebar"))
     XCTAssertTrue(prompt.contains("Medium"))
+    XCTAssertFalse(prompt.contains("Repository:"))
     XCTAssertFalse(prompt.contains("applications, contacts, and interview prep"))
   }
 
@@ -94,12 +95,31 @@ final class CodeHelpSettingsTests: XCTestCase {
     )
     let prompt = CodeHelpAgentRunner.prompt(
       for: request,
-      repoRootPath: "/tmp/jobmaxxing",
       search: CodeHelpSearchResult(summary: "SettingsHelpPages.swift", matchedFiles: ["SettingsHelpPages.swift"])
     )
 
     XCTAssertTrue(prompt.contains("untrusted reference material"))
     XCTAssertLessThan(prompt.count, 7_000)
+  }
+
+  func testCodeHelpSearchUsesOnlyApprovedSourcePaths() async throws {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    defer { try? FileManager.default.removeItem(at: root) }
+    try FileManager.default.createDirectory(at: root.appendingPathComponent("src"), withIntermediateDirectories: true)
+    try FileManager.default.createDirectory(at: root.appendingPathComponent("data"), withIntermediateDirectories: true)
+    try FileManager.default.createDirectory(at: root.appendingPathComponent("macos/.build"), withIntermediateDirectories: true)
+    try "let token = \"source\"\n".write(to: root.appendingPathComponent("src/Safe.swift"), atomically: true, encoding: .utf8)
+    try "token=private\n".write(to: root.appendingPathComponent("data/private.txt"), atomically: true, encoding: .utf8)
+    try "token=private\n".write(to: root.appendingPathComponent(".env"), atomically: true, encoding: .utf8)
+    try "token=private\n".write(to: root.appendingPathComponent("macos/.build/private.txt"), atomically: true, encoding: .utf8)
+
+    let search = await CodeHelpAgentRunner.searchRepository(for: "Where is token defined?", repoRoot: root)
+
+    XCTAssertTrue(search.summary.contains("src/Safe.swift"))
+    XCTAssertFalse(search.summary.contains("data/private.txt"))
+    XCTAssertFalse(search.summary.contains(".env"))
+    XCTAssertFalse(search.summary.contains("macos/.build"))
+    XCTAssertEqual(search.matchedFiles, ["src/Safe.swift"])
   }
 
   @MainActor
