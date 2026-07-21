@@ -930,6 +930,18 @@ describe("jobmaxxing core", () => {
     }
   });
 
+  it("includes xAI as a disconnected default connector", () => {
+    const connector = defaultStore.connectors.find((item) => item.id === "xai");
+    expect(connector).toMatchObject({
+      id: "xai",
+      label: "Grok",
+      provider: "xAI",
+      enabled: true,
+      connected: false
+    });
+    expect(defaultStore.hermes.enabledConnectors).toContain("xai");
+  });
+
   it("rejects malformed profiles before saving", async () => {
     await expect(saveProfileWorkflow({} as never)).rejects.toThrow();
   });
